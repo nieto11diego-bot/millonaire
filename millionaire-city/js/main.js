@@ -17,7 +17,7 @@ const state = {
   cash: START_CASH,
   level: 1,
   xp: 100,
-  mode: "place", // place | pan | erase | road
+  mode: "place", // place | move | erase | road
   selected: null,
 };
 
@@ -48,15 +48,17 @@ function setHint(text) {
 
 function setMode(mode) {
   state.mode = mode;
-  canvas.classList.toggle("mode-pan", mode === "pan");
+  canvas.classList.toggle("mode-place", mode === "place" && !!state.selected);
+  canvas.classList.toggle("mode-move", mode === "move");
   canvas.classList.toggle("mode-erase", mode === "erase");
-  document.getElementById("btn-pan").classList.toggle("active", mode === "pan");
+  canvas.classList.toggle("mode-road", mode === "road");
+  document.getElementById("btn-move").classList.toggle("active", mode === "move");
   document.getElementById("btn-erase").classList.toggle("active", mode === "erase");
-  if (mode === "pan") setHint("Arrastra el mapa para mover la cámara.");
-  else if (mode === "erase") setHint("Clic/arrastra: borra carretera o edificios (reembolso 50%).");
-  else if (mode === "road") setHint("Pinta carreteras: recta por defecto; curva/T/cruce según vecinos.");
+  if (mode === "move") setHint("Clic en un edificio o decoración para moverlo. Clic vacío cancela.");
+  else if (mode === "erase") setHint("Clic/arrastra: borra carretera o edificios (reembolso 50%). Clic vacío cancela.");
+  else if (mode === "road") setHint("Pinta carreteras: recta por defecto; curva/T/cruce según vecinos. Clic vacío cancela.");
   else if (state.selected) setHint(`Colocando: ${state.selected.name}. Clic en el mapa.`);
-  else setHint("Toca una casa (📋) para contrato, o un edificio con $ para cobrar.");
+  else setHint("Arrastra para mover la cámara. Toca una casa (📋) para contrato, o un edificio con $ para cobrar.");
 }
 
 function levelFromXp(xp, thresholds) {
@@ -185,6 +187,7 @@ async function main() {
     e.preventDefault();
     if (contractsUi.open) contractsUi.hide();
     else if (missionsUi.open) missionsUi.hide();
+    else clearActiveTool();
   });
 
   // Starter bungalow + road stub so economy is playable immediately
@@ -213,7 +216,7 @@ async function main() {
           `Colocando: ${item.name} (${item.gridW}×${item.gridH}). Costo $${item.costCoins.toLocaleString("en-US")}`
         );
       } else if (state.mode === "place") {
-        setHint("Toca una casa (📋) para contrato, o un edificio con $ para cobrar.");
+        setMode("place");
       }
     },
     {
@@ -225,23 +228,38 @@ async function main() {
     }
   );
 
-  document.getElementById("btn-pan").addEventListener("click", () => {
+  let camDragging = false;
+  let paintDragging = false;
+  let pendingInteract = null;
+  /** @type {{ building: object, ox: number, oy: number } | null} */
+  let moveDrag = null;
+  let lastX = 0;
+  let lastY = 0;
+  let downX = 0;
+  let downY = 0;
+  let lastPaintKey = "";
+  const DRAG_THRESHOLD = 6;
+
+  function clearActiveTool() {
+    moveDrag = null;
+    renderer.hover = null;
     shop.clearSelection();
-    setMode(state.mode === "pan" ? "place" : "pan");
+    setMode("place");
+  }
+
+  document.getElementById("btn-move").addEventListener("click", () => {
+    shop.clearSelection();
+    moveDrag = null;
+    setMode(state.mode === "move" ? "place" : "move");
   });
   document.getElementById("btn-erase").addEventListener("click", () => {
     shop.clearSelection();
+    moveDrag = null;
     setMode(state.mode === "erase" ? "place" : "erase");
   });
   document.getElementById("zoom").addEventListener("input", (e) => {
     renderer.camera.zoom = Number(e.target.value);
   });
-
-  let camDragging = false;
-  let paintDragging = false;
-  let lastX = 0;
-  let lastY = 0;
-  let lastPaintKey = "";
 
   function pointerPos(e) {
     const rect = canvas.getBoundingClientRect();
@@ -252,6 +270,27 @@ async function main() {
     const p = pointerPos(e);
     const world = renderer.screenToWorld(p.x, p.y);
     return renderer.worldToTile(world.x, world.y);
+  }
+
+  function footprintOnRoad(tx, ty, def) {
+    for (let y = ty; y < ty + def.gridH; y++) {
+      for (let x = tx; x < tx + def.gridW; x++) {
+        if (roads.has(x, y)) return true;
+      }
+    }
+    return false;
+  }
+
+  function canDropBuilding(building, tx, ty) {
+    const def = building.def;
+    return grid.canPlace(tx, ty, def.gridW, def.gridH, building.id) && !footprintOnRoad(tx, ty, def);
+  }
+
+  function startCamDrag(p) {
+    camDragging = true;
+    canvas.classList.add("dragging");
+    lastX = p.x;
+    lastY = p.y;
   }
 
   function blockedForRoad(tx, ty) {
@@ -284,7 +323,7 @@ async function main() {
       syncMissionValues();
       refreshHud();
       setHint("Carretera borrada.");
-      return;
+      return true;
     }
     const removed = grid.eraseAt(tx, ty);
     if (removed) {
@@ -294,7 +333,9 @@ async function main() {
       syncMissionValues();
       refreshHud();
       setHint(`Borrado ${removed.def.name}. Reembolso $${refund.toLocaleString("en-US")}`);
+      return true;
     }
+    return false;
   }
 
   function interactBuilding(building) {
@@ -352,27 +393,91 @@ async function main() {
     }
   }
 
+  function updateMoveHover(tx, ty) {
+    if (!moveDrag) {
+      renderer.hover = null;
+      return;
+    }
+    const { building, ox, oy } = moveDrag;
+    const dropTx = tx - ox;
+    const dropTy = ty - oy;
+    const valid = canDropBuilding(building, dropTx, dropTy);
+    renderer.hover = {
+      tx: dropTx,
+      ty: dropTy,
+      def: building.def,
+      valid,
+      hideId: building.id,
+    };
+  }
+
   canvas.addEventListener("pointerdown", (e) => {
     canvas.setPointerCapture(e.pointerId);
     const p = pointerPos(e);
-    if (state.mode === "pan" || e.button === 1 || e.shiftKey) {
-      camDragging = true;
-      canvas.classList.add("dragging");
-      lastX = p.x;
-      lastY = p.y;
+    downX = p.x;
+    downY = p.y;
+    pendingInteract = null;
+
+    if (e.button === 1 || e.shiftKey) {
+      startCamDrag(p);
       return;
     }
+    if (e.button !== 0) return;
 
     const { tx, ty } = tileFromEvent(e);
     lastPaintKey = `${tx},${ty}`;
 
+    // Drop while moving a building (invalid drop keeps it picked up)
+    if (state.mode === "move" && moveDrag) {
+      const { building, ox, oy } = moveDrag;
+      const dropTx = tx - ox;
+      const dropTy = ty - oy;
+      if (canDropBuilding(building, dropTx, dropTy)) {
+        if (grid.move(building, dropTx, dropTy)) {
+          sim.recomputeAll();
+          syncMissionValues();
+          setHint(`Movido: ${building.def.name}`);
+        }
+        moveDrag = null;
+        renderer.hover = null;
+      } else {
+        updateMoveHover(tx, ty);
+        setHint("No se puede soltar aquí (ocupado, fuera del mapa o sobre carretera). Esc cancela.");
+      }
+      return;
+    }
+
+    if (state.mode === "move") {
+      const hit = grid.buildingAt(tx, ty);
+      if (!hit) {
+        clearActiveTool();
+        startCamDrag(p);
+        return;
+      }
+      moveDrag = { building: hit, ox: tx - hit.tx, oy: ty - hit.ty };
+      updateMoveHover(tx, ty);
+      tooltip.hide();
+      setHint(`Moviendo ${hit.def.name}. Clic para soltar.`);
+      return;
+    }
+
     if (state.mode === "erase") {
+      const erased = eraseAt(tx, ty);
+      if (!erased) {
+        clearActiveTool();
+        startCamDrag(p);
+        return;
+      }
       paintDragging = true;
-      eraseAt(tx, ty);
       return;
     }
 
     if (state.mode === "road") {
+      if (blockedForRoad(tx, ty)) {
+        clearActiveTool();
+        startCamDrag(p);
+        return;
+      }
       paintDragging = true;
       paintRoadAt(tx, ty);
       return;
@@ -384,18 +489,9 @@ async function main() {
         setHint("No tienes suficiente efectivo.");
         return;
       }
-      if (!grid.canPlace(tx, ty, def.gridW, def.gridH)) {
-        setHint("No cabe aquí (fuera del mapa o ocupado).");
-        return;
-      }
-      let onRoad = false;
-      for (let y = ty; y < ty + def.gridH; y++) {
-        for (let x = tx; x < tx + def.gridW; x++) {
-          if (roads.has(x, y)) onRoad = true;
-        }
-      }
-      if (onRoad) {
-        setHint("Quita la carretera antes de construir encima.");
+      if (!grid.canPlace(tx, ty, def.gridW, def.gridH) || footprintOnRoad(tx, ty, def)) {
+        clearActiveTool();
+        startCamDrag(p);
         return;
       }
       const placed = grid.place(def, tx, ty);
@@ -411,26 +507,50 @@ async function main() {
       return;
     }
 
-    // Tap existing building (economy interact)
-    if (state.mode === "place" && !state.selected) {
-      const hit = grid.buildingAt(tx, ty);
-      if (hit) interactBuilding(hit);
+    // Idle: tap building to interact, or drag empty map to pan
+    const hit = grid.buildingAt(tx, ty);
+    if (hit) {
+      pendingInteract = hit;
+      lastX = p.x;
+      lastY = p.y;
+    } else {
+      startCamDrag(p);
     }
   });
 
   canvas.addEventListener("pointermove", (e) => {
     const p = pointerPos(e);
+
+    // Convert a pending building tap into a pan if the pointer moves enough
+    if (pendingInteract && !camDragging) {
+      const dx = p.x - downX;
+      const dy = p.y - downY;
+      if (dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD) {
+        pendingInteract = null;
+        startCamDrag({ x: downX, y: downY });
+        lastX = p.x;
+        lastY = p.y;
+      }
+    }
+
     if (camDragging) {
       const z = renderer.camera.zoom;
       renderer.camera.x -= (p.x - lastX) / z;
       renderer.camera.y -= (p.y - lastY) / z;
       lastX = p.x;
       lastY = p.y;
+      tooltip.hide();
       return;
     }
 
     const { tx, ty } = tileFromEvent(e);
     const key = `${tx},${ty}`;
+
+    if (moveDrag) {
+      updateMoveHover(tx, ty);
+      tooltip.hide();
+      return;
+    }
 
     if (paintDragging && state.mode === "road") {
       if (key !== lastPaintKey) {
@@ -452,19 +572,19 @@ async function main() {
         valid: !blockedForRoad(tx, ty) && state.cash >= roadCost,
       };
       tooltip.hide();
+    } else if (state.mode === "move") {
+      const hit = grid.buildingAt(tx, ty);
+      renderer.hover = hit
+        ? { tx: hit.tx, ty: hit.ty, def: hit.def, valid: true }
+        : null;
+      tooltip.hide();
     } else if (state.mode === "place" && state.selected) {
       const def = state.selected;
-      let onRoad = false;
-      for (let y = ty; y < ty + def.gridH; y++) {
-        for (let x = tx; x < tx + def.gridW; x++) {
-          if (roads.has(x, y)) onRoad = true;
-        }
-      }
       renderer.hover = {
         tx,
         ty,
         def,
-        valid: grid.canPlace(tx, ty, def.gridW, def.gridH) && state.cash >= def.costCoins && !onRoad,
+        valid: grid.canPlace(tx, ty, def.gridW, def.gridH) && state.cash >= def.costCoins && !footprintOnRoad(tx, ty, def),
       };
       tooltip.hide();
     } else if (state.mode === "place" && !state.selected && !camDragging && !paintDragging) {
@@ -483,12 +603,16 @@ async function main() {
   });
 
   canvas.addEventListener("pointerup", () => {
+    if (pendingInteract && !camDragging) {
+      interactBuilding(pendingInteract);
+    }
+    pendingInteract = null;
     camDragging = false;
     paintDragging = false;
     canvas.classList.remove("dragging");
   });
   canvas.addEventListener("pointerleave", () => {
-    renderer.hover = null;
+    if (!moveDrag) renderer.hover = null;
     tooltip.hide();
   });
 

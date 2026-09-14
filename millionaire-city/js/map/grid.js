@@ -19,11 +19,12 @@ export class Grid {
     return tx >= 0 && ty >= 0 && tx + w <= this.cols && ty + h <= this.rows;
   }
 
-  canPlace(tx, ty, w, h) {
+  canPlace(tx, ty, w, h, ignoreId = null) {
     if (!this.inBounds(tx, ty, w, h)) return false;
     for (let y = ty; y < ty + h; y++) {
       for (let x = tx; x < tx + w; x++) {
-        if (this.cells[this.index(x, y)]) return false;
+        const cell = this.cells[this.index(x, y)];
+        if (cell && cell.id !== ignoreId) return false;
       }
     }
     return true;
@@ -47,6 +48,30 @@ export class Grid {
     }
     this.buildings.push(building);
     return building;
+  }
+
+  /**
+   * Relocate a building in place (keeps id + runtime).
+   * @returns {boolean}
+   */
+  move(building, tx, ty) {
+    const w = building.def.gridW;
+    const h = building.def.gridH;
+    if (!this.canPlace(tx, ty, w, h, building.id)) return false;
+    const { tx: ox, ty: oy } = building;
+    for (let y = oy; y < oy + h; y++) {
+      for (let x = ox; x < ox + w; x++) {
+        this.cells[this.index(x, y)] = null;
+      }
+    }
+    building.tx = tx;
+    building.ty = ty;
+    for (let y = ty; y < ty + h; y++) {
+      for (let x = tx; x < tx + w; x++) {
+        this.cells[this.index(x, y)] = building;
+      }
+    }
+    return true;
   }
 
   buildingAt(tx, ty) {

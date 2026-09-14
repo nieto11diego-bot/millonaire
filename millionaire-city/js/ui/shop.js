@@ -100,7 +100,7 @@ export class ShopUI {
       const help = document.createElement("p");
       help.style.cssText = "color:var(--muted);font-size:0.8rem;padding:0.5rem;margin:0";
       help.innerHTML =
-        "Pinta arrastrando. Recta por defecto; curva / T / cruce solo según vecinos. <strong>Borrar</strong> quita carretera o edificios.";
+        "Pinta arrastrando. Recta por defecto; curva / T / cruce solo según vecinos. <strong>Mover</strong> reubica edificios; <strong>Borrar</strong> los quita. Clic vacío o Esc cancela la herramienta.";
       list.appendChild(help);
       return;
     }

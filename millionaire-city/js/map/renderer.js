@@ -215,7 +215,8 @@ export class Renderer {
       }
     }
 
-    // Buildings Y-sorted by bottom of footprint
+    // Buildings Y-sorted by bottom of footprint (skip one being dragged)
+    const hideId = this.hover?.hideId || null;
     const sorted = [...this.grid.buildings].sort((a, b) => {
       const ay = a.ty + a.def.gridH;
       const by = b.ty + b.def.gridH;
@@ -223,13 +224,14 @@ export class Renderer {
     });
 
     for (const b of sorted) {
+      if (hideId && b.id === hideId) continue;
       this._drawBuilding(b.def, b.tx, b.ty, 1);
       this._drawStatus(b);
     }
 
-    // Ghost sprite on top
-    if (this.hover && this.hover.def && this.hover.valid) {
-      this._drawBuilding(this.hover.def, this.hover.tx, this.hover.ty, 0.55);
+    // Ghost sprite on top (also when invalid, so relocate preview stays visible)
+    if (this.hover && this.hover.def) {
+      this._drawBuilding(this.hover.def, this.hover.tx, this.hover.ty, this.hover.valid ? 0.55 : 0.35);
     }
 
     ctx.restore();

@@ -235,13 +235,15 @@ html, body {
   width: 100%;
   height: 100%;
   display: block;
-  cursor: crosshair;
+  cursor: grab;
   touch-action: none;
 }
 
-#map.mode-pan { cursor: grab; }
-#map.mode-pan.dragging { cursor: grabbing; }
+#map.dragging { cursor: grabbing; }
+#map.mode-place { cursor: crosshair; }
+#map.mode-move { cursor: move; }
 #map.mode-erase { cursor: not-allowed; }
+#map.mode-road { cursor: crosshair; }
 
 .stage-tools {
   position: absolute;
