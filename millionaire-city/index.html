@@ -37,6 +37,7 @@
 
       <section class="stage">
         <canvas id="map" width="960" height="640"></canvas>
+        <div id="building-tooltip" class="bldg-tip" hidden></div>
         <div class="stage-tools">
           <button type="button" id="btn-pan" title="Arrastrar mapa">Mover</button>
           <button type="button" id="btn-erase" title="Borrar edificio">Borrar</button>
@@ -62,6 +63,19 @@
         </div>
         <div class="missions-list" id="missions-list"></div>
         <div id="mission-detail" class="mission-detail" hidden></div>
+      </div>
+    </div>
+
+    <div id="contracts-panel" class="contracts-panel" hidden>
+      <div class="contracts-window" role="dialog" aria-labelledby="contracts-title">
+        <header class="contracts-header">
+          <div>
+            <h2 id="contracts-title">Contrato</h2>
+            <p id="contracts-meta" class="contracts-meta"></p>
+          </div>
+          <button type="button" id="contracts-close" class="missions-close" aria-label="Cerrar">×</button>
+        </header>
+        <div class="contracts-list" id="contracts-list"></div>
       </div>
     </div>
   </div>

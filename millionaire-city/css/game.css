@@ -615,6 +615,316 @@ html, body {
   cursor: pointer;
 }
 
+/* —— Contracts overlay —— */
+.contracts-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  background: rgba(8, 12, 16, 0.72);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+.contracts-panel[hidden] {
+  display: none !important;
+}
+
+.contracts-panel.visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.contracts-window {
+  width: min(420px, 100%);
+  max-height: min(560px, calc(100vh - 2rem));
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #2a353e 0%, #1a2229 100%);
+  border: 1px solid var(--panel-edge);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.contracts-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem 0.4rem;
+}
+
+.contracts-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.contracts-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.contracts-list {
+  overflow: auto;
+  padding: 0.4rem 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.contract-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--panel-edge);
+  background: #1c262c;
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+}
+
+.contract-card:hover {
+  border-color: var(--accent);
+  background: #243039;
+}
+
+.contract-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.contract-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.85rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.contract-stats em {
+  font-style: normal;
+  color: var(--accent);
+  margin-right: 0.1rem;
+}
+
+/* —— Building hover tooltip (MC style) —— */
+.bldg-tip {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 14px));
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+}
+
+.bldg-tip[hidden] {
+  display: none !important;
+}
+
+.bldg-tip.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.bldg-tip-card {
+  position: relative;
+  min-width: 168px;
+  max-width: 220px;
+  border: 3px solid #e8922a;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fff8e0 0%, #f5e6b8 100%);
+  overflow: visible;
+}
+
+.bldg-tip-title {
+  margin: 0;
+  padding: 0.35rem 0.65rem 0.3rem;
+  text-align: center;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow:
+    -1.5px -1.5px 0 #5a2e0a,
+    1.5px -1.5px 0 #5a2e0a,
+    -1.5px 1.5px 0 #5a2e0a,
+    1.5px 1.5px 0 #5a2e0a,
+    0 2px 0 #5a2e0a;
+  background: linear-gradient(180deg, #f0a030 0%, #d87818 100%);
+  border-bottom: 2px solid #c46810;
+  border-radius: 7px 7px 0 0;
+}
+
+.bldg-tip-body {
+  padding: 0.45rem 0.55rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.bldg-tip-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.bldg-tip-ico {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+
+.bldg-tip-bar {
+  position: relative;
+  flex: 1;
+  height: 18px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #c45a18 0%, #a84810 100%);
+  border: 1px solid #7a3010;
+  overflow: hidden;
+}
+
+.bldg-tip-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(180deg, #ffb04a 0%, #e87820 55%, #d06018 100%);
+  transition: width 0.15s linear;
+}
+
+.bldg-tip-bar-text {
+  position: relative;
+  z-index: 1;
+  display: block;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 18px;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}
+
+.bldg-tip-status {
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6a3a10;
+}
+
+.bldg-tip-rewards {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.1rem;
+}
+
+.bldg-tip-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.bldg-tip-reward img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.bldg-tip-reward.cash img {
+  width: 26px;
+  height: 16px;
+}
+
+.bldg-tip-reward.xp span {
+  color: #c02828;
+}
+
+.bldg-tip-reward.cash span {
+  color: #1a8a28;
+}
+
+.bldg-tip-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #c9a050 20%, #c9a050 80%, transparent);
+  margin: 0.05rem 0;
+}
+
+.bldg-tip-tenants {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #2a2010;
+}
+
+.bldg-tip-tenants-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #1a8a28;
+  font-weight: 800;
+}
+
+.bldg-tip-tenants-val img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.bldg-tip-footnote {
+  text-align: center;
+  font-size: 0.68rem;
+  color: #8a5a20;
+  font-weight: 600;
+}
+
+.bldg-tip-arrow {
+  position: absolute;
+  left: 28%;
+  bottom: -11px;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 11px solid #e8922a;
+  filter: drop-shadow(0 1px 0 #c46810);
+}
+
+.bldg-tip-arrow::after {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: -11px;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 8px solid #f5e6b8;
+}
+
 @media (max-width: 800px) {
   .workspace { grid-template-columns: 1fr; grid-template-rows: 40% 1fr; }
   .shop { border-right: none; border-bottom: 1px solid var(--panel-edge); }

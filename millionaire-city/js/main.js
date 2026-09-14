@@ -5,6 +5,10 @@ import { RoadLayer } from "./map/roads.js";
 import { ShopUI } from "./ui/shop.js";
 import { MissionTracker, companyValueFromGrid } from "./missions.js";
 import { MissionsUI } from "./ui/missions.js";
+import { ContractsUI } from "./ui/contracts.js";
+import { BuildingTooltip } from "./ui/tooltip.js";
+import { EconomySim } from "./sim.js";
+import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE } from "./economy.js";
 
 const TILE = 32;
 const START_CASH = 500_000;
@@ -25,8 +29,12 @@ const canvas = document.getElementById("map");
 
 /** @type {MissionTracker | null} */
 let missions = null;
+/** @type {EconomySim | null} */
+let sim = null;
 /** @type {number[] | null} */
 let levelThresholds = null;
+/** @type {import("./map/grid.js").Grid | null} */
+let gridRef = null;
 
 function refreshHud() {
   cashEl.textContent = state.cash.toLocaleString("en-US");
@@ -48,7 +56,7 @@ function setMode(mode) {
   else if (mode === "erase") setHint("Clic/arrastra: borra carretera o edificios (reembolso 50%).");
   else if (mode === "road") setHint("Pinta carreteras: recta por defecto; curva/T/cruce según vecinos.");
   else if (state.selected) setHint(`Colocando: ${state.selected.name}. Clic en el mapa.`);
-  else setHint("Elige un edificio en la tienda o Carretera en Herramientas.");
+  else setHint("Toca una casa (📋) para contrato, o un edificio con $ para cobrar.");
 }
 
 function levelFromXp(xp, thresholds) {
@@ -61,7 +69,7 @@ function levelFromXp(xp, thresholds) {
   return level;
 }
 
-function applyXp(amount, grid) {
+function applyXp(amount) {
   if (!amount) return;
   state.xp += amount;
   if (levelThresholds) {
@@ -72,13 +80,18 @@ function applyXp(amount, grid) {
       setHint(`¡Subiste al nivel ${state.level}!`);
     }
   }
-  syncMissionValues(grid);
+  syncMissionValues();
   refreshHud();
 }
 
-function syncMissionValues(grid) {
-  if (!missions || !grid) return;
-  missions.syncValueMissions(state.cash, companyValueFromGrid(grid));
+function syncMissionValues() {
+  if (!missions || !gridRef) return;
+  missions.syncValueMissions(state.cash, companyValueFromGrid(gridRef), gridRef);
+}
+
+function initBuilding(building) {
+  building.runtime = createRuntime(building.def);
+  sim?.recomputeAll();
 }
 
 async function main() {
@@ -97,41 +110,96 @@ async function main() {
   levelThresholds = data.economy.levelCurve?.thresholds || null;
 
   const grid = new Grid(40, 30, TILE);
+  gridRef = grid;
   const roads = new RoadLayer(grid.cols, grid.rows, data.roads);
   const renderer = new Renderer(canvas, grid, roads);
   await Promise.all([renderer.preload(allDefs), roads.preload()]);
+
+  sim = new EconomySim({
+    grid,
+    roads,
+    economy: data.economy,
+    onEvent: (type, payload) => {
+      if (type === "rent_ready") {
+        setHint(`Alquiler listo: ${payload.building.def.name}. Toca el edificio para cobrar.`);
+      } else if (type === "rent_lost") {
+        setHint(`Perdiste el alquiler de ${payload.building.def.name}. Toca para firmar de nuevo.`);
+        syncMissionValues();
+      } else if (type === "commerce_ready") {
+        const n = payload.building.runtime?.customers || 0;
+        setHint(`${payload.building.def.name} listo (${n} clientes). Toca para cobrar.`);
+      }
+    },
+  });
 
   missions = new MissionTracker(data.missions.missions || [], state, data.i18n, "es");
   const missionsUi = new MissionsUI(document.getElementById("missions-panel"), missions, {
     onCollect: (sku, reward) => {
       state.cash += reward;
-      syncMissionValues(grid);
+      syncMissionValues();
       refreshHud();
-      const title = missions.bySku.get(sku);
+      const row = missions.bySku.get(sku);
       setHint(
         `¡Misión cumplida! +$${reward.toLocaleString("en-US")}` +
-          (title ? ` (${missions.titleOf(title)})` : "")
+          (row ? ` (${missions.titleOf(row)})` : "")
       );
     },
   });
 
-  // Expose for debugging / automation; harmless in prototype
-  window.__mc = { state, missions, grid, missionsUi };
+  const t = (tid, fb) => missions.t(tid, fb);
+  const contractsUi = new ContractsUI(document.getElementById("contracts-panel"), {
+    t,
+    onSign: (contractId) => {
+      const building = contractsUi.building;
+      if (!building) return;
+      const result = sim.signContract(building, contractId, state.cash);
+      if (!result.ok) {
+        if (result.reason === "no_cash") setHint("No tienes suficiente efectivo para ese contrato.");
+        else if (result.reason === "no_road") setHint("La casa necesita conexión a carretera.");
+        else setHint("No se pudo firmar el contrato.");
+        return;
+      }
+      state.cash -= result.cost;
+      missions.onContractSigned();
+      applyXp(result.xp || 0);
+      syncMissionValues();
+      refreshHud();
+      contractsUi.hide();
+      const wait = formatDuration(building.runtime.durationMs / TIME_SCALE);
+      setHint(
+        `Contrato firmado en ${building.def.name}: +$${result.income.toLocaleString("en-US")} en ~${wait} (${result.tenants} inquilinos).`
+      );
+    },
+  });
+
+  const tooltip = new BuildingTooltip(document.getElementById("building-tooltip"), {
+    t,
+    getContract: (id) => sim.index.contractById[id] || null,
+  });
+
+  window.__mc = { state, missions, grid, missionsUi, contractsUi, sim, tooltip, renderer };
 
   document.getElementById("btn-missions").addEventListener("click", () => missionsUi.toggle());
   document.addEventListener("keydown", (e) => {
-    if ((e.key === "Escape" || e.code === "Escape") && missionsUi.open) {
-      e.preventDefault();
-      missionsUi.hide();
-    }
+    if (e.key !== "Escape" && e.code !== "Escape") return;
+    e.preventDefault();
+    if (contractsUi.open) contractsUi.hide();
+    else if (missionsUi.open) missionsUi.hide();
   });
 
+  // Starter bungalow + road stub so economy is playable immediately
   const starter = catalog.houses.find((h) => h.name === "Bungalow") || catalog.houses[0];
+  let starterTx = 0;
+  let starterTy = 0;
   if (starter) {
-    const tx = Math.floor(grid.cols / 2) - Math.floor(starter.gridW / 2);
-    const ty = Math.floor(grid.rows / 2) - Math.floor(starter.gridH / 2);
-    grid.place(starter, tx, ty);
-    // Starter bungalow does not count as a "buy" for missions.
+    starterTx = Math.floor(grid.cols / 2) - Math.floor(starter.gridW / 2);
+    starterTy = Math.floor(grid.rows / 2) - Math.floor(starter.gridH / 2);
+    const placed = grid.place(starter, starterTx, starterTy);
+    if (placed) initBuilding(placed);
+    // Road ring south of starter (free)
+    for (let x = starterTx - 1; x < starterTx + starter.gridW + 1; x++) {
+      roads.paint(x, starterTy + starter.gridH, true, () => false);
+    }
   }
 
   const shop = new ShopUI(
@@ -145,7 +213,7 @@ async function main() {
           `Colocando: ${item.name} (${item.gridW}×${item.gridH}). Costo $${item.costCoins.toLocaleString("en-US")}`
         );
       } else if (state.mode === "place") {
-        setHint("Elige un edificio en la tienda o Carretera en Herramientas.");
+        setHint("Toca una casa (📋) para contrato, o un edificio con $ para cobrar.");
       }
     },
     {
@@ -202,7 +270,8 @@ async function main() {
     }
     if (roads.paint(tx, ty, true, blockedForRoad)) {
       state.cash -= roadCost;
-      syncMissionValues(grid);
+      sim.recomputeAll();
+      syncMissionValues();
       refreshHud();
     }
   }
@@ -211,7 +280,8 @@ async function main() {
     if (roads.has(tx, ty)) {
       roads.paint(tx, ty, false);
       state.cash += Math.floor(roadCost * 0.5);
-      syncMissionValues(grid);
+      sim.recomputeAll();
+      syncMissionValues();
       refreshHud();
       setHint("Carretera borrada.");
       return;
@@ -220,9 +290,65 @@ async function main() {
     if (removed) {
       const refund = Math.floor((removed.def.costCoins || 0) * 0.5);
       state.cash += refund;
-      syncMissionValues(grid);
+      sim.recomputeAll();
+      syncMissionValues();
       refreshHud();
       setHint(`Borrado ${removed.def.name}. Reembolso $${refund.toLocaleString("en-US")}`);
+    }
+  }
+
+  function interactBuilding(building) {
+    const action = sim.tapAction(building);
+
+    if (action === "open_contracts") {
+      if (needsRoad(building.def) && !isRoadConnected(building, roads)) {
+        setHint("Esta casa necesita carretera adyacente para firmar contratos.");
+        return;
+      }
+      contractsUi.show(building, sim.previewContracts(building));
+      return;
+    }
+
+    if (action === "clear_lost") {
+      sim.clearLost(building);
+      contractsUi.show(building, sim.previewContracts(building));
+      setHint("Alquiler perdido. Elige un nuevo contrato.");
+      return;
+    }
+
+    if (action === "collect_rent") {
+      const result = sim.collectRent(building);
+      if (!result.ok) return;
+      state.cash += result.cash;
+      missions.onRentCollected();
+      applyXp(result.xp || 0);
+      syncMissionValues();
+      refreshHud();
+      setHint(`Cobrado alquiler de ${building.def.name}: +$${result.cash.toLocaleString("en-US")}`);
+      return;
+    }
+
+    if (action === "collect_commerce") {
+      const result = sim.collectCommerce(building);
+      if (!result.ok) return;
+      state.cash += result.cash;
+      missions.onCommerceCollected(building.def.objectId);
+      syncMissionValues();
+      refreshHud();
+      setHint(
+        `Cobrado ${building.def.name}: +$${result.cash.toLocaleString("en-US")} (${result.customers} clientes)`
+      );
+      return;
+    }
+
+    if (building.def.category === "house" && building.runtime?.status === "waiting") {
+      setHint(
+        `${building.def.name}: contrato en curso (${formatDuration(building.runtime.remainingMs / TIME_SCALE)} resto).`
+      );
+    } else if (building.def.category === "commercial" && building.runtime?.status === "waiting") {
+      setHint(
+        `${building.def.name}: ${building.runtime.customers || 0} clientes · cobra en ${formatDuration(building.runtime.remainingMs / TIME_SCALE)}.`
+      );
     }
   }
 
@@ -274,13 +400,21 @@ async function main() {
       }
       const placed = grid.place(def, tx, ty);
       if (placed) {
+        initBuilding(placed);
         state.cash -= def.costCoins;
         missions?.onBuildingBought(def);
-        applyXp(def.exp || 0, grid);
-        syncMissionValues(grid);
+        applyXp(def.exp || 0);
+        syncMissionValues();
         refreshHud();
         setHint(`Colocado: ${def.name}`);
       }
+      return;
+    }
+
+    // Tap existing building (economy interact)
+    if (state.mode === "place" && !state.selected) {
+      const hit = grid.buildingAt(tx, ty);
+      if (hit) interactBuilding(hit);
     }
   });
 
@@ -317,6 +451,7 @@ async function main() {
         road: true,
         valid: !blockedForRoad(tx, ty) && state.cash >= roadCost,
       };
+      tooltip.hide();
     } else if (state.mode === "place" && state.selected) {
       const def = state.selected;
       let onRoad = false;
@@ -331,8 +466,19 @@ async function main() {
         def,
         valid: grid.canPlace(tx, ty, def.gridW, def.gridH) && state.cash >= def.costCoins && !onRoad,
       };
+      tooltip.hide();
+    } else if (state.mode === "place" && !state.selected && !camDragging && !paintDragging) {
+      renderer.hover = null;
+      const hit = grid.buildingAt(tx, ty);
+      if (hit && (hit.def.category === "house" || hit.def.category === "commercial")) {
+        const anchor = renderer.buildingAnchorScreen(hit);
+        tooltip.show(hit, { left: anchor.x, top: anchor.y });
+      } else {
+        tooltip.hide();
+      }
     } else {
       renderer.hover = null;
+      tooltip.hide();
     }
   });
 
@@ -343,6 +489,7 @@ async function main() {
   });
   canvas.addEventListener("pointerleave", () => {
     renderer.hover = null;
+    tooltip.hide();
   });
 
   canvas.addEventListener(
@@ -358,15 +505,25 @@ async function main() {
     { passive: false }
   );
 
-  syncMissionValues(grid);
+  sim.recomputeAll();
+  syncMissionValues();
   refreshHud();
   setMode("place");
 
-  function loop() {
+  let lastTs = performance.now();
+  function loop(ts) {
+    const dt = ts - lastTs;
+    lastTs = ts;
+    sim.update(dt);
+    // Keep tooltip timer live while hovering
+    if (tooltip.building && !tooltip.root.hidden) {
+      const anchor = renderer.buildingAnchorScreen(tooltip.building);
+      tooltip.update({ left: anchor.x, top: anchor.y });
+    }
     renderer.draw();
     requestAnimationFrame(loop);
   }
-  loop();
+  requestAnimationFrame(loop);
 }
 
 main();

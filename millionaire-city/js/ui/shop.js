@@ -124,8 +124,14 @@ export class ShopUI {
       btn.addEventListener("click", () => {
         this.tool = null;
         this.onTool(null);
-        this.selected = item;
-        this.onSelect(item);
+        // Toggle: second click clears selection so map hover tooltips work
+        if (this.selected === item) {
+          this.selected = null;
+          this.onSelect(null);
+        } else {
+          this.selected = item;
+          this.onSelect(item);
+        }
         this.render();
       });
       list.appendChild(btn);

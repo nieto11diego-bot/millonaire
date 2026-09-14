@@ -242,11 +242,12 @@ export class MissionTracker {
   }
 
   /**
-   * Re-evaluate cash / company-value missions.
+   * Re-evaluate cash / company-value / customers / house-bonus missions.
    * @param {number} cash
-   * @param {number} companyValue sum of placed building costs
+   * @param {number} companyValue
+   * @param {object} [grid]
    */
-  syncValueMissions(cash, companyValue) {
+  syncValueMissions(cash, companyValue, grid = null) {
     const pairs = [
       [37, cash],
       [35, cash],
@@ -254,16 +255,76 @@ export class MissionTracker {
       [39, companyValue],
       [40, companyValue],
     ];
-    let changed = false;
     for (const [sku, value] of pairs) {
       const m = this.bySku.get(sku);
       if (!m || this.isCompleted(sku) || !this.isUnlocked(sku)) continue;
       const need = m.target?.condition ?? 0;
-      if (need > 0 && value >= need) {
-        if (this.improve(sku)) changed = true;
-      }
+      if (need > 0 && value >= need) this.improve(sku);
     }
-    if (changed) this._emit();
+    if (grid) this.syncEconomyMissions(grid);
+  }
+
+  /**
+   * Customer + house-bonus missions (condition holds the real threshold).
+   * @param {{ buildings: object[] }} grid
+   */
+  syncEconomyMissions(grid) {
+    if (!grid?.buildings) return;
+
+    // Customer missions: best matching commerce of the required type
+    const customerSkus = [
+      { sku: 18, objectId: 17 }, // pizzeria 3
+      { sku: 19, objectId: 17 }, // pizzeria 10
+      { sku: 20, objectId: 17 }, // pizzeria 16
+      { sku: 21, objectId: 18 }, // coffee 12
+    ];
+    for (const { sku, objectId } of customerSkus) {
+      const m = this.bySku.get(sku);
+      if (!m || this.isCompleted(sku) || !this.isUnlocked(sku)) continue;
+      const need = m.target?.condition ?? 0;
+      let best = 0;
+      for (const b of grid.buildings) {
+        if (b.def?.objectId !== objectId) continue;
+        best = Math.max(best, b.runtime?.customers || 0);
+      }
+      if (need > 0 && best >= need) this.improve(sku);
+    }
+
+    // House bonus % missions — best house of each type
+    const bonusSkus = [
+      { sku: 23, objectId: 0 }, // bungalow 12%
+      { sku: 24, objectId: 1 }, // bungalow luxury 16%
+      { sku: 25, objectId: 2 }, // townhouse 30%
+      { sku: 26, objectId: 10 }, // villa 90%
+    ];
+    for (const { sku, objectId } of bonusSkus) {
+      const m = this.bySku.get(sku);
+      if (!m || this.isCompleted(sku) || !this.isUnlocked(sku)) continue;
+      const need = m.target?.condition ?? 0;
+      let bestPct = 0;
+      for (const b of grid.buildings) {
+        if (b.def?.objectId !== objectId) continue;
+        bestPct = Math.max(bestPct, (b.runtime?.influence || 0) / 100);
+      }
+      if (need > 0 && bestPct >= need) this.improve(sku);
+    }
+  }
+
+  onContractSigned() {
+    this.improve(5);
+    this.improve(6);
+  }
+
+  onRentCollected() {
+    this.improve(30);
+    this.improve(31);
+    this.improve(32);
+    this.improve(33);
+  }
+
+  onCommerceCollected(objectId) {
+    if (objectId === 17) this.improve(28); // pizzeria
+    if (objectId === 18) this.improve(29); // coffee (sku 29 amount=50)
   }
 
   /**
@@ -309,11 +370,21 @@ export class MissionTracker {
   }
 }
 
-/** Metrics the prototype can advance today (placement + cash/company value). */
+/** Metrics the prototype can advance today. */
 function isTrackableNow(m) {
   const metric = m.target?.metric;
-  if (metric === "buildings_built" || metric === "wonders_owned") return true;
-  if (metric === "company_value") return true;
+  if (
+    metric === "buildings_built" ||
+    metric === "wonders_owned" ||
+    metric === "company_value" ||
+    metric === "contracts_signed" ||
+    metric === "rents_collected" ||
+    metric === "commerce_collects" ||
+    metric === "customers" ||
+    metric === "house_bonus_percent"
+  ) {
+    return true;
+  }
   if (VALUE_SKUS.has(m.sku)) return true;
   return false;
 }

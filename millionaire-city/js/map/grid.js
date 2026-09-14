@@ -38,6 +38,7 @@ export class Grid {
       def,
       tx,
       ty,
+      runtime: null, // filled by EconomySim / createRuntime
     };
     for (let y = ty; y < ty + h; y++) {
       for (let x = tx; x < tx + w; x++) {

@@ -103,6 +103,25 @@ export class Renderer {
     };
   }
 
+  /** World coords → canvas CSS pixel position. */
+  worldToScreen(wx, wy) {
+    const z = this.camera.zoom;
+    const mapW = this.grid.cols * this.grid.tile;
+    const mapH = this.grid.rows * this.grid.tile;
+    return {
+      x: (wx - mapW / 2 - this.camera.x) * z + this.cssWidth / 2,
+      y: (wy - mapH / 2 - this.camera.y) * z + this.cssHeight / 2,
+    };
+  }
+
+  /** Top-center of a building footprint in canvas CSS pixels. */
+  buildingAnchorScreen(building) {
+    const tile = this.grid.tile;
+    const wx = (building.tx + building.def.gridW / 2) * tile;
+    const wy = building.ty * tile;
+    return this.worldToScreen(wx, wy);
+  }
+
   worldToTile(wx, wy) {
     return {
       tx: Math.floor(wx / this.grid.tile),
@@ -205,6 +224,7 @@ export class Renderer {
 
     for (const b of sorted) {
       this._drawBuilding(b.def, b.tx, b.ty, 1);
+      this._drawStatus(b);
     }
 
     // Ghost sprite on top
@@ -213,6 +233,80 @@ export class Renderer {
     }
 
     ctx.restore();
+  }
+
+  _drawStatus(b) {
+    const rt = b.runtime;
+    if (!rt) return;
+    const ctx = this.ctx;
+    const tile = this.grid.tile;
+    const cx = (b.tx + b.def.gridW / 2) * tile;
+    const top = b.ty * tile - 4;
+    const st = rt.status;
+
+    // Progress bar while waiting
+    if (st === "waiting" && rt.durationMs > 0) {
+      const pct = 1 - Math.max(0, rt.remainingMs) / rt.durationMs;
+      const bw = Math.max(24, b.def.gridW * tile * 0.7);
+      const bh = 5;
+      const bx = cx - bw / 2;
+      const by = top - 8;
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+      ctx.fillStyle = "#1a2329";
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = b.def.category === "commercial" ? "#e0b15f" : "#3db89a";
+      ctx.fillRect(bx, by, bw * pct, bh);
+    }
+
+    // Status badge
+    let label = null;
+    let color = "#3db89a";
+    if (st === "idle" && b.def.category === "house") {
+      label = "📋";
+      color = "#6a8aa8";
+    } else if (st === "ready") {
+      label = "$";
+      color = "#3db89a";
+    } else if (st === "lost") {
+      label = "!";
+      color = "#e07a5f";
+    } else if (st === "waiting" && b.def.category === "commercial" && (rt.customers || 0) === 0) {
+      label = "0";
+      color = "#9ab0b8";
+    }
+
+    if (label) {
+      const r = 10;
+      const by = top - (st === "waiting" ? 22 : 6);
+      ctx.beginPath();
+      ctx.arc(cx, by, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, cx, by + 0.5);
+      ctx.textAlign = "start";
+      ctx.textBaseline = "alphabetic";
+    }
+
+    // Customer count on commerces
+    if (b.def.category === "commercial" && (rt.customers || 0) > 0) {
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.font = "10px sans-serif";
+      const text = `${rt.customers}👤`;
+      const tw = ctx.measureText(text).width;
+      const tx = cx - tw / 2 - 3;
+      const ty = (b.ty + b.def.gridH) * tile + 2;
+      ctx.fillRect(tx, ty, tw + 6, 12);
+      ctx.fillStyle = "#e0b15f";
+      ctx.fillText(text, tx + 3, ty + 10);
+    }
   }
 
   _drawBuilding(def, tx, ty, alpha) {
