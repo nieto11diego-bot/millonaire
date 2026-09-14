@@ -1,12 +1,13 @@
 /** Load game data JSON (requires local HTTP server). */
 export async function loadGameData() {
-  const [economy, buildings, i18n, roads] = await Promise.all([
+  const [economy, buildings, i18n, roads, missions] = await Promise.all([
     fetch("data/economy.json").then((r) => r.json()),
     fetch("refs/buildings.json").then((r) => r.json()),
     fetch("data/i18n.json").then((r) => r.json()),
     fetch("data/roads.json").then((r) => r.json()),
+    fetch("data/missions.json").then((r) => r.json()),
   ]);
-  return { economy, buildings, i18n, roads };
+  return { economy, buildings, i18n, roads, missions };
 }
 
 export function spriteUrlFromFile(spriteFile) {

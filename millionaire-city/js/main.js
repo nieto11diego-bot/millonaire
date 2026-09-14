@@ -3,6 +3,8 @@ import { Grid } from "./map/grid.js";
 import { Renderer } from "./map/renderer.js";
 import { RoadLayer } from "./map/roads.js";
 import { ShopUI } from "./ui/shop.js";
+import { MissionTracker, companyValueFromGrid } from "./missions.js";
+import { MissionsUI } from "./ui/missions.js";
 
 const TILE = 32;
 const START_CASH = 500_000;
@@ -20,6 +22,11 @@ const levelEl = document.getElementById("level");
 const xpEl = document.getElementById("xp");
 const hintEl = document.getElementById("hint");
 const canvas = document.getElementById("map");
+
+/** @type {MissionTracker | null} */
+let missions = null;
+/** @type {number[] | null} */
+let levelThresholds = null;
 
 function refreshHud() {
   cashEl.textContent = state.cash.toLocaleString("en-US");
@@ -44,6 +51,36 @@ function setMode(mode) {
   else setHint("Elige un edificio en la tienda o Carretera en Herramientas.");
 }
 
+function levelFromXp(xp, thresholds) {
+  if (!thresholds?.length) return 1;
+  let level = 1;
+  for (let i = 0; i < thresholds.length; i++) {
+    if (xp >= thresholds[i]) level = i + 1;
+    else break;
+  }
+  return level;
+}
+
+function applyXp(amount, grid) {
+  if (!amount) return;
+  state.xp += amount;
+  if (levelThresholds) {
+    const next = levelFromXp(state.xp, levelThresholds);
+    if (next > state.level) {
+      state.level = next;
+      missions?.onLevelUp();
+      setHint(`¡Subiste al nivel ${state.level}!`);
+    }
+  }
+  syncMissionValues(grid);
+  refreshHud();
+}
+
+function syncMissionValues(grid) {
+  if (!missions || !grid) return;
+  missions.syncValueMissions(state.cash, companyValueFromGrid(grid));
+}
+
 async function main() {
   let data;
   try {
@@ -57,17 +94,44 @@ async function main() {
   const catalog = enrichCatalog(data.economy, data.buildings);
   const allDefs = [...catalog.houses, ...catalog.commerces, ...catalog.decorations, ...catalog.wonders];
   const roadCost = data.roads.costCoins ?? 500;
+  levelThresholds = data.economy.levelCurve?.thresholds || null;
 
   const grid = new Grid(40, 30, TILE);
   const roads = new RoadLayer(grid.cols, grid.rows, data.roads);
   const renderer = new Renderer(canvas, grid, roads);
   await Promise.all([renderer.preload(allDefs), roads.preload()]);
 
+  missions = new MissionTracker(data.missions.missions || [], state, data.i18n, "es");
+  const missionsUi = new MissionsUI(document.getElementById("missions-panel"), missions, {
+    onCollect: (sku, reward) => {
+      state.cash += reward;
+      syncMissionValues(grid);
+      refreshHud();
+      const title = missions.bySku.get(sku);
+      setHint(
+        `¡Misión cumplida! +$${reward.toLocaleString("en-US")}` +
+          (title ? ` (${missions.titleOf(title)})` : "")
+      );
+    },
+  });
+
+  // Expose for debugging / automation; harmless in prototype
+  window.__mc = { state, missions, grid, missionsUi };
+
+  document.getElementById("btn-missions").addEventListener("click", () => missionsUi.toggle());
+  document.addEventListener("keydown", (e) => {
+    if ((e.key === "Escape" || e.code === "Escape") && missionsUi.open) {
+      e.preventDefault();
+      missionsUi.hide();
+    }
+  });
+
   const starter = catalog.houses.find((h) => h.name === "Bungalow") || catalog.houses[0];
   if (starter) {
     const tx = Math.floor(grid.cols / 2) - Math.floor(starter.gridW / 2);
     const ty = Math.floor(grid.rows / 2) - Math.floor(starter.gridH / 2);
     grid.place(starter, tx, ty);
+    // Starter bungalow does not count as a "buy" for missions.
   }
 
   const shop = new ShopUI(
@@ -138,6 +202,7 @@ async function main() {
     }
     if (roads.paint(tx, ty, true, blockedForRoad)) {
       state.cash -= roadCost;
+      syncMissionValues(grid);
       refreshHud();
     }
   }
@@ -146,6 +211,7 @@ async function main() {
     if (roads.has(tx, ty)) {
       roads.paint(tx, ty, false);
       state.cash += Math.floor(roadCost * 0.5);
+      syncMissionValues(grid);
       refreshHud();
       setHint("Carretera borrada.");
       return;
@@ -154,6 +220,7 @@ async function main() {
     if (removed) {
       const refund = Math.floor((removed.def.costCoins || 0) * 0.5);
       state.cash += refund;
+      syncMissionValues(grid);
       refreshHud();
       setHint(`Borrado ${removed.def.name}. Reembolso $${refund.toLocaleString("en-US")}`);
     }
@@ -195,7 +262,6 @@ async function main() {
         setHint("No cabe aquí (fuera del mapa o ocupado).");
         return;
       }
-      // Don't place building on roads
       let onRoad = false;
       for (let y = ty; y < ty + def.gridH; y++) {
         for (let x = tx; x < tx + def.gridW; x++) {
@@ -209,7 +275,9 @@ async function main() {
       const placed = grid.place(def, tx, ty);
       if (placed) {
         state.cash -= def.costCoins;
-        state.xp += def.exp || 0;
+        missions?.onBuildingBought(def);
+        applyXp(def.exp || 0, grid);
+        syncMissionValues(grid);
         refreshHud();
         setHint(`Colocado: ${def.name}`);
       }
@@ -290,6 +358,7 @@ async function main() {
     { passive: false }
   );
 
+  syncMissionValues(grid);
   refreshHud();
   setMode("place");
 

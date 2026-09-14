@@ -1,0 +1,63 @@
+﻿{
+    "meta":  {
+                 "extractedAt":  "2026-09-14T17:08:24.6549388+02:00",
+                 "source":  "ResourceIDs ANM_* via DEX + descriptor trailers"
+             },
+    "sprites":  {
+                    "slice_box":  {
+                                      "pack":  "r2_0034",
+                                      "anm":  "ANM_SLICE_BOX",
+                                      "file":  "assets/ui/slice_box.png"
+                                  },
+                    "mission_locked_card":  {
+                                                "pack":  "r2_0002",
+                                                "anm":  "ANM_MISSION_LOCKED_CARD",
+                                                "file":  "assets/ui/mission_locked_card.png"
+                                            },
+                    "button_accept":  {
+                                          "pack":  "r1_0769",
+                                          "anm":  "ANM_BUTTON_ACCEPT",
+                                          "file":  "assets/ui/button_accept.png"
+                                      },
+                    "time_bar":  {
+                                     "pack":  "r2_0045",
+                                     "anm":  "ANM_TIME_BAR",
+                                     "file":  "assets/ui/time_bar.png"
+                                 },
+                    "icon_hud_cash":  {
+                                          "pack":  "r2_0013",
+                                          "anm":  "ANM_ICON_HUD_CASH",
+                                          "file":  "assets/ui/icon_hud_cash.png"
+                                      },
+                    "mission_completed_card":  {
+                                                   "pack":  "r2_0008",
+                                                   "anm":  "ANM_MISSION_COMPLETED_CARD",
+                                                   "file":  "assets/ui/mission_completed_card.png"
+                                               },
+                    "advisor_button":  {
+                                           "pack":  "r1_0659",
+                                           "anm":  "ANM_ADVISOR",
+                                           "file":  "assets/ui/advisor.png"
+                                       },
+                    "icon_info":  {
+                                      "pack":  "r2_0021",
+                                      "anm":  "ANM_ICON_INFO",
+                                      "file":  "assets/ui/icon_info.png"
+                                  },
+                    "mission_reward_card":  {
+                                                "pack":  "r2_0012",
+                                                "anm":  "ANM_MISSION_REWARD_CARD",
+                                                "file":  "assets/ui/mission_reward_card.png"
+                                            },
+                    "mission_progress_card":  {
+                                                  "pack":  "r2_0036",
+                                                  "anm":  "ANM_MISSION_PROGRESS_CARD",
+                                                  "file":  "assets/ui/mission_progress_card.png"
+                                              },
+                    "time_bar_background":  {
+                                                "pack":  "r2_0067",
+                                                "anm":  "ANM_TIME_BAR_BACKGROUND",
+                                                "file":  "assets/ui/time_bar_background.png"
+                                            }
+                }
+}
