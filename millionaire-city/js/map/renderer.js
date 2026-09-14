@@ -78,7 +78,10 @@ export class Renderer {
   }
 
   async preload(defs) {
-    const urls = [...new Set(defs.map((d) => d.spriteUrl).filter(Boolean))];
+    const urls = [
+      ...new Set(defs.map((d) => d.spriteUrl).filter(Boolean)),
+      "assets/ui/icon_cash.png",
+    ];
     await Promise.all(
       urls.map(
         (url) =>
@@ -264,12 +267,12 @@ export class Renderer {
     // Status badge
     let label = null;
     let color = "#3db89a";
+    let spriteUrl = null;
     if (st === "idle" && b.def.category === "house") {
       label = "📋";
       color = "#6a8aa8";
     } else if (st === "ready") {
-      label = "$";
-      color = "#3db89a";
+      spriteUrl = "assets/ui/icon_cash.png";
     } else if (st === "lost") {
       label = "!";
       color = "#e07a5f";
@@ -278,21 +281,30 @@ export class Renderer {
       color = "#9ab0b8";
     }
 
-    if (label) {
-      const r = 10;
-      const by = top - (st === "waiting" ? 22 : 6);
+    const iconScale = 1.4;
+    const by = top - (st === "waiting" ? 22 : 6) * iconScale;
+
+    if (spriteUrl) {
+      const img = this.images.get(spriteUrl);
+      if (img) {
+        const w = 28 * iconScale;
+        const h = (img.height / img.width) * w;
+        ctx.drawImage(img, cx - w / 2, by - h / 2, w, h);
+      }
+    } else if (label) {
+      const r = 10 * iconScale;
       ctx.beginPath();
       ctx.arc(cx, by, r, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
       ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1 * iconScale;
       ctx.stroke();
       ctx.fillStyle = "#fff";
-      ctx.font = "bold 11px sans-serif";
+      ctx.font = `bold ${11 * iconScale}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(label, cx, by + 0.5);
+      ctx.fillText(label, cx, by + 0.5 * iconScale);
       ctx.textAlign = "start";
       ctx.textBaseline = "alphabetic";
     }
