@@ -2,15 +2,15 @@
   "tileSize": 32,
   "costCoins": 500,
   "spritesPath": "assets/roads/",
-  "comment": "N=1 E=2 S=4 W=8. Straight for line/ends; curves for L; tees for 3-way; cross only for mask 15.",
-  "straightNS": "r1_0611.png",
-  "straightEW": "r1_0613.png",
+  "comment": "N=1 E=2 S=4 W=8. Custom 32x32 straights/curves (seamless). Cross only mask 15.",
+  "straightNS": "straight_ns.png",
+  "straightEW": "straight_ew.png",
   "cross": "r1_0617.png",
   "curves": {
-    "3": "r1_0628.png",
-    "6": "r1_0625.png",
-    "9": "r1_0627.png",
-    "12": "r1_0626.png"
+    "3": "curve_ne.png",
+    "6": "curve_es.png",
+    "9": "curve_nw.png",
+    "12": "curve_sw.png"
   },
   "tees": {
     "7": "r1_0610.png",

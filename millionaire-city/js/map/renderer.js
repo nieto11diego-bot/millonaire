@@ -114,10 +114,8 @@ export class Renderer {
           const url = this.roads.spriteFor(tx, ty);
           const img = this.roads.images.get(url) || this.images.get(url);
           if (img) {
-            // Center non-32px tiles within the cell
-            const dx = tx * tile + (tile - img.width) / 2;
-            const dy = ty * tile + (tile - img.height) / 2;
-            ctx.drawImage(img, dx, dy);
+            // Fill cell exactly (32x32) to avoid seams from centering smaller assets
+            ctx.drawImage(img, tx * tile, ty * tile, tile, tile);
           } else {
             ctx.fillStyle = "#555";
             ctx.fillRect(tx * tile + 2, ty * tile + 2, tile - 4, tile - 4);

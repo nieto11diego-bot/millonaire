@@ -82,7 +82,7 @@ export class ShopUI {
       roadBtn.type = "button";
       roadBtn.className = "card" + (this.tool === "road" ? " selected" : "");
       roadBtn.innerHTML = `
-        <img src="assets/roads/r1_0611.png" alt="" />
+        <img src="assets/roads/straight_ew.png" alt="" />
         <div class="meta">
           <div class="name">Carretera</div>
           <div class="sub">$${this.roadCost.toLocaleString("en-US")} / tile</div>
