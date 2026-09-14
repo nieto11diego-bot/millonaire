@@ -23,6 +23,44 @@ export class Renderer {
     window.addEventListener("resize", () => this._resize());
   }
 
+  /** Soft mottled grass matching Millionaire City reference (~#5A7917). */
+  _ensureGrassPattern() {
+    if (this.grassPattern) return this.grassPattern;
+    const size = 128;
+    const c = document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    const g = c.getContext("2d");
+    const img = g.createImageData(size, size);
+    const d = img.data;
+    // Base / light / dark from reference screenshot samples
+    const base = [90, 121, 23]; // #5A7917
+    const light = [100, 132, 20]; // #648414
+    const dark = [80, 110, 18]; // #506E12
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        // Layered value noise for soft lawn grain (not a hard checker)
+        const n1 =
+          Math.sin(x * 0.37 + y * 0.19) * 0.35 +
+          Math.sin(x * 0.11 - y * 0.29) * 0.25 +
+          Math.sin((x + y) * 0.08) * 0.2 +
+          Math.sin(x * 0.73) * Math.cos(y * 0.61) * 0.2;
+        const n2 = ((x * 374761393 + y * 668265263) >>> 0) % 1000 / 1000 - 0.5;
+        const t = Math.max(-1, Math.min(1, n1 + n2 * 0.35));
+        const src = t > 0 ? light : dark;
+        const a = Math.abs(t);
+        const i = (y * size + x) * 4;
+        d[i] = Math.round(base[0] + (src[0] - base[0]) * a);
+        d[i + 1] = Math.round(base[1] + (src[1] - base[1]) * a);
+        d[i + 2] = Math.round(base[2] + (src[2] - base[2]) * a);
+        d[i + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    this.grassPattern = this.ctx.createPattern(c, "repeat");
+    return this.grassPattern;
+  }
+
   _resize() {
     const parent = this.canvas.parentElement;
     const w = parent.clientWidth;
@@ -35,6 +73,8 @@ export class Renderer {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.cssWidth = w;
     this.cssHeight = h;
+    // Canvas resize resets context; rebuild grass pattern next draw
+    this.grassPattern = null;
   }
 
   async preload(defs) {
@@ -83,15 +123,10 @@ export class Renderer {
     ctx.scale(z, z);
     ctx.translate(-mapW / 2 - this.camera.x, -mapH / 2 - this.camera.y);
 
-    // Ground
-    for (let ty = 0; ty < rows; ty++) {
-      for (let tx = 0; tx < cols; tx++) {
-        const shade = (tx + ty) % 2 === 0 ? "#3d5246" : "#364a3f";
-        ctx.fillStyle = shade;
-        ctx.fillRect(tx * tile, ty * tile, tile, tile);
-      }
-    }
-    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    // Ground — vibrant MC grass (color matched to reference screenshot)
+    ctx.fillStyle = this._ensureGrassPattern() || "#5A7917";
+    ctx.fillRect(0, 0, mapW, mapH);
+    ctx.strokeStyle = "rgba(0,0,0,0.12)";
     ctx.lineWidth = 1;
     for (let x = 0; x <= cols; x++) {
       ctx.beginPath();
