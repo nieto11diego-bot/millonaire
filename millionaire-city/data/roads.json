@@ -5,7 +5,7 @@
   "comment": "N=1 E=2 S=4 W=8. Custom 32x32 straights/curves (seamless). Cross only mask 15.",
   "straightNS": "straight_ns.png",
   "straightEW": "straight_ew.png",
-  "cross": "r1_0617.png",
+  "cross": "cross.png",
   "curves": {
     "3": "curve_ne.png",
     "6": "curve_es.png",
