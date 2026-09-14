@@ -1,0 +1,649 @@
+{
+    "meta":  {
+                 "source":  "MissionScreen.DATA + TextIDs",
+                 "count":  33,
+                 "extractedAt":  "2026-09-14T14:28:37.3403734+02:00"
+             },
+    "schema":  {
+                   "sku":  "Mission id",
+                   "type":  "MissionScreen constant category",
+                   "rewardCash":  "Cash on collect",
+                   "unlockLevel":  "Min level",
+                   "unlockSku":  "Prior mission sku or null",
+                   "target":  "Goal; clients/bonus often use condition as the numeric requirement"
+               },
+    "missions":  [
+                     {
+                         "sku":  2,
+                         "type":  "buy_pizzeria",
+                         "titleTid":  70,
+                         "title":  "Pizzalicious I",
+                         "descriptionTid":  71,
+                         "description":  "Buy the Pizzeria that is \u0027For Sale\u0027 close to the Headquarters. Return here to get the reward.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  1,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  1,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  28,
+                         "type":  "collect_from_pizzeria",
+                         "titleTid":  122,
+                         "title":  "Pizza Sale",
+                         "descriptionTid":  123,
+                         "description":  "Collect profit from a Pizzeria. Tip: The more houses you have next to the Pizzeria the more customers you have - and the more money you\u0027ll make.",
+                         "rewardCash":  25000,
+                         "unlockLevel":  1,
+                         "unlockSku":  2,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  0,
+                                        "metric":  "commerce_collects",
+                                        "value":  1,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  18,
+                         "type":  "clients_pizzeria",
+                         "titleTid":  102,
+                         "title":  "Pizzalicious More Clients",
+                         "descriptionTid":  103,
+                         "description":  "Get 3 customers to your Pizzeria. Tip: Buy a 2x2 plot next to the Pizzeria. Then buy a house from the Shop and place it on the plot. Sign a contract to get the tenants as your customers.",
+                         "rewardCash":  30000,
+                         "unlockLevel":  1,
+                         "unlockSku":  2,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  3,
+                                        "metric":  "customers",
+                                        "value":  3,
+                                        "source":  "dex-verified",
+                                        "note":  "condition holds customer target; amount is progress counter unit"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  19,
+                         "type":  "clients_pizzeria",
+                         "titleTid":  104,
+                         "title":  "Pizzalicious II",
+                         "descriptionTid":  105,
+                         "description":  "Build houses around a Pizzeria and get 10 customers. Tip: Buy plots inside the Pizzeria\u0027s radius, then go to the Shop, buy houses and sign contracts to get the tenants as customers.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  1,
+                         "unlockSku":  18,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  10,
+                                        "metric":  "customers",
+                                        "value":  10,
+                                        "source":  "dex-verified",
+                                        "note":  "condition holds customer target; amount is progress counter unit"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  20,
+                         "type":  "clients_pizzeria",
+                         "titleTid":  106,
+                         "title":  "Pizzalicious III",
+                         "descriptionTid":  107,
+                         "description":  "Build houses around a Pizzeria and get 16 customers. Tip: Buy plots inside the Pizzeria\u0027s radius, then go to the Shop, buy houses and sign contracts to get the tenants as customers.",
+                         "rewardCash":  60000,
+                         "unlockLevel":  1,
+                         "unlockSku":  19,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  16,
+                                        "metric":  "customers",
+                                        "value":  16,
+                                        "source":  "dex-verified",
+                                        "note":  "condition holds customer target; amount is progress counter unit"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  23,
+                         "type":  "bonus_bungalow",
+                         "titleTid":  112,
+                         "title":  "Pimp my House I",
+                         "descriptionTid":  113,
+                         "description":  "Build decorations next to any Bungalow to get a 12% House Bonus. Tip: You can find decorations from the Shop.",
+                         "rewardCash":  25000,
+                         "unlockLevel":  1,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  12,
+                                        "metric":  "house_bonus_percent",
+                                        "value":  12,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  24,
+                         "type":  "bonus_bungalow_luxury",
+                         "titleTid":  114,
+                         "title":  "Pimp my House II",
+                         "descriptionTid":  115,
+                         "description":  "Build decorations next to any Bungalow Luxury to get a 16% House Bonus. Tip: You can find decorations from the Shop.",
+                         "rewardCash":  60000,
+                         "unlockLevel":  1,
+                         "unlockSku":  23,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  16,
+                                        "metric":  "house_bonus_percent",
+                                        "value":  16,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  7,
+                         "type":  "buy_townhouse",
+                         "titleTid":  80,
+                         "title":  "Build Townhouse",
+                         "descriptionTid":  81,
+                         "description":  "Build a Townhouse anywhere in the city!",
+                         "rewardCash":  35000,
+                         "unlockLevel":  5,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  1,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  25,
+                         "type":  "bonus_townhouse",
+                         "titleTid":  116,
+                         "title":  "Pimp my Townhouse",
+                         "descriptionTid":  117,
+                         "description":  "Build decorations next to a Townhouse to get a 30% House Bonus.",
+                         "rewardCash":  40000,
+                         "unlockLevel":  1,
+                         "unlockSku":  7,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  30,
+                                        "metric":  "house_bonus_percent",
+                                        "value":  30,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  8,
+                         "type":  "buy_coffee_shop",
+                         "titleTid":  82,
+                         "title":  "Coffeelicious I",
+                         "descriptionTid":  83,
+                         "description":  "Build a Coffee Shop. Tip: place your commerce close to houses to have more customers.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  5,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  1,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  21,
+                         "type":  "clients_coffee_shop",
+                         "titleTid":  108,
+                         "title":  "Coffeelicious II",
+                         "descriptionTid":  109,
+                         "description":  "Build houses around a Coffee Shop and get 24 customers. Tip: Buy plots inside the Coffee Shop\u0027s radius, then go to the Shop, buy houses and sign contracts to get the tenants as customers.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  1,
+                         "unlockSku":  8,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  12,
+                                        "metric":  "customers",
+                                        "value":  12,
+                                        "source":  "dex-verified",
+                                        "note":  "condition holds customer target; amount is progress counter unit",
+                                        "i18nConflict":  "EN text says 24 customers; DEX condition=12"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  29,
+                         "type":  "collect_coffee_shop",
+                         "titleTid":  124,
+                         "title":  "Coffee Sale",
+                         "descriptionTid":  125,
+                         "description":  "Collect profit 50 times from a Coffee Shop. Tip: The more houses you have next to the Coffee Shop the more customers you have - and the more money you\u0027ll make.",
+                         "rewardCash":  55000,
+                         "unlockLevel":  1,
+                         "unlockSku":  8,
+                         "target":  {
+                                        "amount":  50,
+                                        "condition":  0,
+                                        "metric":  "commerce_collects",
+                                        "value":  50,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  10,
+                         "type":  "buy_trees",
+                         "titleTid":  86,
+                         "title":  "Green Thumb",
+                         "descriptionTid":  87,
+                         "description":  "Build 2 trees. Tip: Place them next to the houses to increase the House Bonus.\\nGo to the Shop and select the a tree from Decorations tab.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  1,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  2,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  2,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  11,
+                         "type":  "buy_fountains",
+                         "titleTid":  88,
+                         "title":  "Fountain Dream",
+                         "descriptionTid":  89,
+                         "description":  "Build 3 fountains in your city. Tip: Place them close to the houses to increase their House Bonus.",
+                         "rewardCash":  40000,
+                         "unlockLevel":  13,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  3,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  3,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  12,
+                         "type":  "buy_big_garden",
+                         "titleTid":  90,
+                         "title":  "Green Thumb II",
+                         "descriptionTid":  91,
+                         "description":  "Build a Big Garden to your city for the citizens to enjoy. Tip: Place it close to the houses to increase their House Bonus.",
+                         "rewardCash":  40000,
+                         "unlockLevel":  24,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  1,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  13,
+                         "type":  "buy_townhouse_luxury",
+                         "titleTid":  92,
+                         "title":  "Luxury Houses I",
+                         "descriptionTid":  93,
+                         "description":  "Build 1 Townhouse Luxury.",
+                         "rewardCash":  40000,
+                         "unlockLevel":  6,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  1,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  16,
+                         "type":  "buy_skyscrapers",
+                         "titleTid":  98,
+                         "title":  "Skyscraper Dream",
+                         "descriptionTid":  99,
+                         "description":  "Build 3 Skyscrapers to give your city that metropolis feel.",
+                         "rewardCash":  250000,
+                         "unlockLevel":  23,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  3,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  3,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  17,
+                         "type":  "buy_wonder",
+                         "titleTid":  100,
+                         "title":  "World Wonder",
+                         "descriptionTid":  101,
+                         "description":  "Build 1 Golden Statue. First build a 4x4 plot and then go to the Shop and the get the wonder from the Wonders tab.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  1,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  1,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  26,
+                         "type":  "bonus_villa",
+                         "titleTid":  118,
+                         "title":  "Rockstar Villa",
+                         "descriptionTid":  119,
+                         "description":  "The famous rock star Billy Dollars is looking for a Villa with a 90% House Bonus so have one ready for him.",
+                         "rewardCash":  50000,
+                         "unlockLevel":  18,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  90,
+                                        "metric":  "house_bonus_percent",
+                                        "value":  90,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  5,
+                         "type":  "sign_contracts",
+                         "titleTid":  76,
+                         "title":  "Sign 2 Contracts",
+                         "descriptionTid":  77,
+                         "description":  "Once you have signed 2 contracts you can collect a cash reward!",
+                         "rewardCash":  40000,
+                         "unlockLevel":  1,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  2,
+                                        "condition":  0,
+                                        "metric":  "contracts_signed",
+                                        "value":  2,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  6,
+                         "type":  "sign_contracts",
+                         "titleTid":  78,
+                         "title":  "Sign 20 Contracts",
+                         "descriptionTid":  79,
+                         "description":  "Once you have signed 20 contracts you can collect a cash reward!",
+                         "rewardCash":  50000,
+                         "unlockLevel":  1,
+                         "unlockSku":  5,
+                         "target":  {
+                                        "amount":  20,
+                                        "condition":  0,
+                                        "metric":  "contracts_signed",
+                                        "value":  20,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  30,
+                         "type":  "collect_rents",
+                         "titleTid":  126,
+                         "title":  "Show me the Rent I",
+                         "descriptionTid":  127,
+                         "description":  "Collect 10 rents from your houses. Tip: Use fast contracts to complete this mission quickly.",
+                         "rewardCash":  30000,
+                         "unlockLevel":  4,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  10,
+                                        "condition":  0,
+                                        "metric":  "rents_collected",
+                                        "value":  10,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  31,
+                         "type":  "collect_rents",
+                         "titleTid":  128,
+                         "title":  "Show me the Rent II",
+                         "descriptionTid":  129,
+                         "description":  "Collect 50 rents from your houses. Tip: Use fast contracts to complete this mission quickly.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  4,
+                         "unlockSku":  30,
+                         "target":  {
+                                        "amount":  50,
+                                        "condition":  0,
+                                        "metric":  "rents_collected",
+                                        "value":  50,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  32,
+                         "type":  "collect_rents",
+                         "titleTid":  130,
+                         "title":  "Show me the Rent III",
+                         "descriptionTid":  131,
+                         "description":  "Collect 100 rents from your houses. Tip: Use fast contracts to complete this mission quickly.",
+                         "rewardCash":  40000,
+                         "unlockLevel":  4,
+                         "unlockSku":  31,
+                         "target":  {
+                                        "amount":  100,
+                                        "condition":  0,
+                                        "metric":  "rents_collected",
+                                        "value":  100,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  33,
+                         "type":  "collect_rents",
+                         "titleTid":  132,
+                         "title":  "Show me the Rent IV",
+                         "descriptionTid":  133,
+                         "description":  "Collect 200 Rents from your Houses. Tip: Use fast contracts to complete this mission quickly.",
+                         "rewardCash":  45000,
+                         "unlockLevel":  4,
+                         "unlockSku":  32,
+                         "target":  {
+                                        "amount":  200,
+                                        "condition":  0,
+                                        "metric":  "rents_collected",
+                                        "value":  200,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  34,
+                         "type":  "buy_expansion",
+                         "titleTid":  134,
+                         "title":  "Size does Matter",
+                         "descriptionTid":  135,
+                         "description":  "Expansions give you more space to build your city. Buy an expansion by tapping on the \u0027For Sale\u0027 sign outside your city. Notice that you need progress in order to open them all.",
+                         "rewardCash":  55000,
+                         "unlockLevel":  20,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  0,
+                                        "metric":  "buildings_built",
+                                        "value":  1,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  37,
+                         "type":  "millionaire",
+                         "titleTid":  140,
+                         "title":  "Cash is King I",
+                         "descriptionTid":  141,
+                         "description":  "Make $1,000,000 in Millionaire Dollars and feel filthy rich.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  10,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  1000000,
+                                        "metric":  "company_value",
+                                        "value":  1000000,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  35,
+                         "type":  "millionaire",
+                         "titleTid":  136,
+                         "title":  "Cash is King II",
+                         "descriptionTid":  137,
+                         "description":  "Make $10,000,000 in Millionaire Dollars and feel extremely rich.",
+                         "rewardCash":  125000,
+                         "unlockLevel":  10,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  10000000,
+                                        "metric":  "company_value",
+                                        "value":  10000000,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  38,
+                         "type":  "company_value",
+                         "titleTid":  142,
+                         "title":  "You\u0027re a Millionaire",
+                         "descriptionTid":  143,
+                         "description":  "Build your company to be worth more than $1,000,000.",
+                         "rewardCash":  35000,
+                         "unlockLevel":  1,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  1000000,
+                                        "metric":  "company_value",
+                                        "value":  1000000,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  39,
+                         "type":  "company_value",
+                         "titleTid":  144,
+                         "title":  "You\u0027re a Multimillionaire",
+                         "descriptionTid":  145,
+                         "description":  "Build your company to be worth more than $5,000,000. Can you make it?",
+                         "rewardCash":  55000,
+                         "unlockLevel":  1,
+                         "unlockSku":  38,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  5000000,
+                                        "metric":  "company_value",
+                                        "value":  5000000,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  40,
+                         "type":  "company_value",
+                         "titleTid":  146,
+                         "title":  "You\u0027re a Multimillionaire II",
+                         "descriptionTid":  147,
+                         "description":  "Build your company to be worth more than $10,000,000.",
+                         "rewardCash":  125000,
+                         "unlockLevel":  1,
+                         "unlockSku":  39,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  10000000,
+                                        "metric":  "company_value",
+                                        "value":  10000000,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  36,
+                         "type":  "buy_all_wonders",
+                         "titleTid":  138,
+                         "title":  "Wonderful!",
+                         "descriptionTid":  139,
+                         "description":  "Build all the wonders to your city! Wouldn\u0027t that be wonderful!",
+                         "rewardCash":  200000,
+                         "unlockLevel":  1,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  1,
+                                        "condition":  6,
+                                        "metric":  "wonders_owned",
+                                        "value":  6,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     },
+                     {
+                         "sku":  420,
+                         "type":  "instant_build",
+                         "titleTid":  156,
+                         "title":  "Instant Build",
+                         "descriptionTid":  157,
+                         "description":  "Tired of waiting? Tap on a house under construction to do an instant build.",
+                         "rewardCash":  50000,
+                         "unlockLevel":  1,
+                         "unlockSku":  null,
+                         "target":  {
+                                        "amount":  10,
+                                        "condition":  0,
+                                        "metric":  "instant_builds",
+                                        "value":  10,
+                                        "source":  "dex-verified"
+                                    },
+                         "confidence":  "dex-verified"
+                     }
+                 ]
+}

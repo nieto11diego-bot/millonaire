@@ -1,0 +1,11 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by coursier.jniutils.LoadWindowsLibrary in an unnamed module (file:/C:/Users/nieto/Desktop/lib/jadx-gui-1.5.6-all.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+INFO  - Checking for updates...
+INFO  - Update channel: STABLE, current version: 1.5.6
+INFO  - loading ...
+INFO  - Loaded classes: 2357, methods: 20450, instructions: 722177
+INFO  - No updates found
+INFO  - Resetting disk code cache, base dir: C:\Users\nieto\AppData\Local\skylot\jadx\cache\projects\classes-5f8e9f47d69425fae4a63ebc5ee71846\code
