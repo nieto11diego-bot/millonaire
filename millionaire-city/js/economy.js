@@ -9,18 +9,56 @@ export const STATUS = {
   LOST: "lost", // house: rent lost
 };
 
-/** Prototype pace: 1 = real-time. Tourists (3 min) → ~18s at 10. */
-export const TIME_SCALE = 10;
+/** Real-time pace (1 = wall clock). Contract UI durations match sim timers. */
+export const TIME_SCALE = 1;
+
+/** Wonder premium production (wall-clock intervals, divided by TIME_SCALE). */
+export const WONDER_PRODUCTION = {
+  goldIntervalSec: 8 * 3600,
+  goldReward: 1,
+  diamondIntervalSec: 24 * 3600,
+  diamondReward: 1,
+};
 
 /** After rent is ready, wait this many contract-durations before "lost". */
 export const LOST_RENT_GRACE_FACTOR = 1;
 
+/**
+ * Contract economy anchors (Tourists on bungalow group: $300 cost / $900 reward).
+ * Scale mixes duration (soft power) + tier so longer/higher contracts pay more
+ * while keeping reward ≈ 3× displayed cost on the base house group.
+ */
+export const CONTRACT_ECONOMY = {
+  anchorCostBase: 120, // × costMod 250% → $300
+  anchorIncomeBase: 900, // × incomeMod 100% → $900
+  anchorDurationSec: 20,
+  durationExponent: 0.45,
+  tierStep: 0.22,
+};
+
+/** Duration×tier scale relative to Tourists (1.0). */
+export function contractEconomyScale(contract) {
+  const d0 = CONTRACT_ECONOMY.anchorDurationSec;
+  const d = Math.max(1, contract?.durationSec || d0);
+  const softDur = Math.pow(d / d0, CONTRACT_ECONOMY.durationExponent);
+  const tier = 1 + (contract?.id || 0) * CONTRACT_ECONOMY.tierStep;
+  return softDur * tier;
+}
+
+export function contractCostBase(contract) {
+  return Math.max(1, Math.round(CONTRACT_ECONOMY.anchorCostBase * contractEconomyScale(contract)));
+}
+
+export function contractIncomeBase(contract) {
+  return Math.max(1, Math.round(CONTRACT_ECONOMY.anchorIncomeBase * contractEconomyScale(contract)));
+}
+
 export function contractCost(contract, group) {
-  return Math.floor((contract.costBase * group.costModifierPercent) / 100);
+  return Math.floor((contractCostBase(contract) * group.costModifierPercent) / 100);
 }
 
 export function contractIncome(contract, group, influenceScaled) {
-  const base = Math.floor((contract.incomeBase * group.incomeModifierPercent) / 100);
+  const base = Math.floor((contractIncomeBase(contract) * group.incomeModifierPercent) / 100);
   return Math.floor((base * (influenceScaled + 10000)) / 10000);
 }
 
@@ -32,9 +70,69 @@ export function contractDurationMs(contract) {
   return contract.durationSec * 1000;
 }
 
+/**
+ * XP bonus % by contract tier: lowest contract → 5%, highest → 25%.
+ * @param {object} contract
+ * @param {number} [contractCount]
+ */
+export function contractXpBonusPercent(contract, contractCount = 9) {
+  const maxId = Math.max(1, (contractCount || 9) - 1);
+  const id = Math.max(0, Math.min(maxId, contract?.id ?? 0));
+  return 5 + (20 * id) / maxId;
+}
+
+/** Base contract XP with tier bonus applied. */
+export function contractXp(contract, contractCount = 9) {
+  const base = contract?.xp || 0;
+  const pct = contractXpBonusPercent(contract, contractCount);
+  return Math.max(0, Math.round(base * (1 + pct / 100)));
+}
+
+export function commerceDurationMs(def) {
+  return (def.incomeTimeSec || 180) * 1000;
+}
+
 export function commercePayout(def, customers) {
   // incomeValue is the per-customer tick base (inferred; commerce is not influence-scaled).
   return (def.incomeValue || 0) * (customers || 0);
+}
+
+export function wonderGoldIntervalMs(def) {
+  const sec = def?.goldIntervalSec ?? WONDER_PRODUCTION.goldIntervalSec;
+  return Math.max(1000, (sec * 1000) / TIME_SCALE);
+}
+
+export function wonderDiamondIntervalMs(def) {
+  const sec = def?.diamondIntervalSec ?? WONDER_PRODUCTION.diamondIntervalSec;
+  return Math.max(1000, (sec * 1000) / TIME_SCALE);
+}
+
+export function wonderGoldReward(def) {
+  return Math.max(0, def?.goldReward ?? WONDER_PRODUCTION.goldReward);
+}
+
+export function wonderDiamondReward(def) {
+  return Math.max(0, def?.diamondReward ?? WONDER_PRODUCTION.diamondReward);
+}
+
+export function wonderGoldReady(rt, now = Date.now()) {
+  return !!rt && now >= (rt.goldReadyAt || 0);
+}
+
+export function wonderDiamondReady(rt, now = Date.now()) {
+  return !!rt && now >= (rt.diamondReadyAt || 0);
+}
+
+export function wonderAnyReady(rt, now = Date.now()) {
+  return wonderGoldReady(rt, now) || wonderDiamondReady(rt, now);
+}
+
+export function wonderGoldRemainingMs(rt, now = Date.now()) {
+  return Math.max(0, (rt?.goldReadyAt || 0) - now);
+}
+
+export function wonderDiamondRemainingMs(rt, now = Date.now()) {
+  return Math.max(0, (rt?.diamondReadyAt || 0) - now);
 }
 
 export function footprintCenter(building) {
@@ -83,12 +181,24 @@ export function createRuntime(def) {
     };
   }
   if (cat === "commercial") {
+    const ms = commerceDurationMs(def);
     return {
       status: STATUS.WAITING,
-      remainingMs: (def.incomeTimeSec || 180) * 1000,
-      durationMs: (def.incomeTimeSec || 180) * 1000,
+      remainingMs: ms,
+      durationMs: ms,
       customers: 0,
       lastPayout: 0,
+    };
+  }
+  if (cat === "wonder") {
+    const now = Date.now();
+    return {
+      goldReadyAt: now + wonderGoldIntervalMs(def),
+      diamondReadyAt: now + wonderDiamondIntervalMs(def),
+      goldNotified: false,
+      diamondNotified: false,
+      lastGold: 0,
+      lastDiamond: 0,
     };
   }
   return {

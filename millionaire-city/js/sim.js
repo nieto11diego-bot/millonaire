@@ -9,15 +9,24 @@ import {
   contractIncome,
   contractTenants,
   contractDurationMs,
+  commerceDurationMs,
   commercePayout,
+  contractXp,
   computeHouseInfluence,
   computeCommerceCustomers,
   isRoadConnected,
   needsRoad,
+  wonderGoldIntervalMs,
+  wonderDiamondIntervalMs,
+  wonderGoldReward,
+  wonderDiamondReward,
+  wonderGoldReady,
+  wonderDiamondReady,
+  wonderAnyReady,
 } from "./economy.js";
 
 /**
- * Simulation ticker for house rent + commerce income.
+ * Simulation ticker for house rent + commerce income + wonder premium resources.
  */
 export class EconomySim {
   /**
@@ -59,6 +68,8 @@ export class EconomySim {
         dirty = this._tickHouse(b, step, roadOk) || dirty;
       } else if (b.def.category === "commercial") {
         dirty = this._tickCommerce(b, step, roadOk) || dirty;
+      } else if (b.def.category === "wonder") {
+        dirty = this._tickWonder(b) || dirty;
       }
     }
     return dirty;
@@ -101,7 +112,7 @@ export class EconomySim {
 
     if (rt.status !== STATUS.WAITING) {
       rt.status = STATUS.WAITING;
-      rt.remainingMs = rt.durationMs || (b.def.incomeTimeSec || 180) * 1000;
+      rt.remainingMs = rt.durationMs || commerceDurationMs(b.def);
     }
 
     // No customers → timer still runs but payout will be 0; keep ticking for feedback.
@@ -117,19 +128,38 @@ export class EconomySim {
     return false;
   }
 
+  _tickWonder(b) {
+    const rt = b.runtime;
+    if (!rt) return false;
+    const now = Date.now();
+    let dirty = false;
+    if (!rt.goldNotified && wonderGoldReady(rt, now)) {
+      rt.goldNotified = true;
+      this.onEvent("wonder_gold_ready", { building: b });
+      dirty = true;
+    }
+    if (!rt.diamondNotified && wonderDiamondReady(rt, now)) {
+      rt.diamondNotified = true;
+      this.onEvent("wonder_diamond_ready", { building: b });
+      dirty = true;
+    }
+    return dirty;
+  }
+
   /**
    * Preview all contracts for a house.
    */
   previewContracts(building) {
     const group = groupForHouse(building.def, this.index);
     const infl = building.runtime?.influence ?? 0;
+    const n = this.index.contracts.length;
     return this.index.contracts.map((c) => ({
       contract: c,
       group,
       cost: contractCost(c, group),
       income: contractIncome(c, group, infl),
       tenants: contractTenants(group),
-      xp: c.xp,
+      xp: contractXp(c, n),
       durationMs: contractDurationMs(c),
       influence: infl,
     }));
@@ -176,8 +206,9 @@ export class EconomySim {
     rt.lastIncome = income;
 
     this.recomputeAll();
-    this.onEvent("contract_signed", { building, contract, cost, xp: contract.xp, income, tenants });
-    return { ok: true, cost, xp: contract.xp, income, tenants };
+    const xp = contractXp(contract, this.index.contracts.length);
+    this.onEvent("contract_signed", { building, contract, cost, xp, income, tenants });
+    return { ok: true, cost, xp, income, tenants };
   }
 
   /**
@@ -190,7 +221,7 @@ export class EconomySim {
 
     const cash = rt.lastIncome || 0;
     const contract = this.index.contractById[rt.contractId];
-    const xp = contract?.xp || 0;
+    const xp = contract ? contractXp(contract, this.index.contracts.length) : 0;
 
     rt.status = STATUS.IDLE;
     rt.contractId = null;
@@ -224,7 +255,7 @@ export class EconomySim {
     const cash = commercePayout(building.def, rt.customers);
     rt.lastPayout = cash;
     rt.status = STATUS.WAITING;
-    rt.durationMs = (building.def.incomeTimeSec || 180) * 1000;
+    rt.durationMs = commerceDurationMs(building.def);
     rt.remainingMs = rt.durationMs;
 
     this.onEvent("commerce_collected", { building, cash, customers: rt.customers });
@@ -232,8 +263,38 @@ export class EconomySim {
   }
 
   /**
+   * Collect ready gold / diamonds from a wonder (whichever timers finished).
+   * @returns {{ ok: boolean, gold?: number, diamonds?: number, reason?: string }}
+   */
+  collectWonder(building) {
+    if (building.def.category !== "wonder") return { ok: false, reason: "no_wonder" };
+    if (!building.runtime) building.runtime = createRuntime(building.def);
+    const rt = building.runtime;
+    const now = Date.now();
+    if (!wonderAnyReady(rt, now)) return { ok: false, reason: "not_ready" };
+
+    let gold = 0;
+    let diamonds = 0;
+    if (wonderGoldReady(rt, now)) {
+      gold = wonderGoldReward(building.def);
+      rt.lastGold = gold;
+      rt.goldReadyAt = now + wonderGoldIntervalMs(building.def);
+      rt.goldNotified = false;
+    }
+    if (wonderDiamondReady(rt, now)) {
+      diamonds = wonderDiamondReward(building.def);
+      rt.lastDiamond = diamonds;
+      rt.diamondReadyAt = now + wonderDiamondIntervalMs(building.def);
+      rt.diamondNotified = false;
+    }
+
+    this.onEvent("wonder_collected", { building, gold, diamonds });
+    return { ok: true, gold, diamonds };
+  }
+
+  /**
    * Resolve tap on a building → action hint for UI.
-   * @returns {"open_contracts"|"collect_rent"|"clear_lost"|"collect_commerce"|"noop"}
+   * @returns {"open_contracts"|"collect_rent"|"clear_lost"|"collect_commerce"|"collect_wonder"|"noop"}
    */
   tapAction(building) {
     if (!building?.runtime) return "noop";
@@ -247,6 +308,10 @@ export class EconomySim {
     }
     if (cat === "commercial") {
       if (st === STATUS.READY) return "collect_commerce";
+      return "noop";
+    }
+    if (cat === "wonder") {
+      if (wonderAnyReady(building.runtime)) return "collect_wonder";
       return "noop";
     }
     return "noop";

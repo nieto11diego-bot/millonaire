@@ -1,17 +1,14 @@
+import { replaceDollarSymbols } from "./money.js";
+
 /**
- * Missions panel UI — card list mirroring MissionObject states.
+ * Missions panel UI — compact vertical list.
  */
 
 const SPRITES = {
-  progress: "assets/ui/mission_progress_card.png",
-  locked: "assets/ui/mission_locked_card.png",
-  reward: "assets/ui/mission_reward_card.png",
-  cash: "assets/ui/icon_hud_cash.png",
+  cash: "assets/ui/icon_cash.png",
   info: "assets/ui/icon_info.png",
   accept: "assets/ui/button_accept.png",
   lockedBtn: "assets/ui/button_locked.png",
-  bar: "assets/ui/time_bar.png",
-  barBg: "assets/ui/time_bar_background.png",
 };
 
 export class MissionsUI {
@@ -118,74 +115,50 @@ export class MissionsUI {
 
   _buildCard(card) {
     const el = document.createElement("article");
-    el.className = `mission-card state-${card.state}`;
+    el.className = `mission-row state-${card.state}`;
     el.dataset.sku = String(card.sku);
-
-    const strip =
-      card.state === "completed"
-        ? SPRITES.reward
-        : card.state === "locked"
-          ? SPRITES.locked
-          : SPRITES.progress;
 
     const pct = card.target > 0 ? Math.round((card.progress / card.target) * 100) : 0;
     const reward = card.rewardCash.toLocaleString("en-US");
 
-    let body = "";
+    let statusHtml = "";
     if (card.state === "open") {
-      body = `
-        <div class="mission-reward-row">
-          <span class="mission-reward-label">${escapeHtml(this.tracker.t(251, "Recompensa"))}</span>
-          <img class="mission-cash-icon" src="${SPRITES.cash}" alt="" />
-          <strong>$${reward}</strong>
-        </div>
-        <div class="mission-progress-block">
-          <span class="mission-progress-label">${escapeHtml(this.tracker.t(252, "En curso"))}</span>
-          <div class="mission-bar" style="border-image-source:url('${SPRITES.barBg}')">
-            <div class="mission-bar-fill" style="width:${pct}%;background-image:url('${SPRITES.bar}')"></div>
-          </div>
+      statusHtml = `
+        <div class="mission-row-status">
+          <div class="mission-bar"><div class="mission-bar-fill" style="width:${pct}%"></div></div>
           <span class="mission-progress-count">${card.progress}/${card.target}</span>
         </div>
-        ${card.trackable ? "" : `<p class="mission-soon">Progreso al implementar contratos / cobros</p>`}
       `;
     } else if (card.state === "completed") {
-      body = `
-        <div class="mission-reward-row">
-          <span class="mission-reward-label">${escapeHtml(this.tracker.t(251, "Recompensa"))}</span>
-          <img class="mission-cash-icon" src="${SPRITES.cash}" alt="" />
-          <strong>$${reward}</strong>
-        </div>
+      statusHtml = `
         <button type="button" class="mission-claim" data-claim="${card.sku}">
-          <img src="${SPRITES.accept}" alt="" />
-          <span>${escapeHtml(this.tracker.t(253, "Recoger recompensa"))}</span>
+          Recoger
         </button>
       `;
     } else {
-      body = `
-        <div class="mission-reward-row muted">
-          <span class="mission-reward-label">${escapeHtml(this.tracker.t(251, "Recompensa"))}</span>
-          <img class="mission-cash-icon" src="${SPRITES.cash}" alt="" />
-          <strong>$${reward}</strong>
-        </div>
-        <button type="button" class="mission-locked-btn" disabled>
-          <img src="${SPRITES.lockedBtn}" alt="" />
-          <span>Bloqueada</span>
-        </button>
-        ${card.unlockText ? `<p class="mission-unlock-hint">${escapeHtml(card.unlockText)}</p>` : ""}
-      `;
+      statusHtml = `<span class="mission-locked-tag">Bloqueada</span>`;
     }
 
+    const unlock =
+      card.state === "locked" && card.unlockText
+        ? `<p class="mission-unlock-hint">${replaceDollarSymbols(escapeHtml(card.unlockText))}</p>`
+        : "";
+
     el.innerHTML = `
-      <div class="mission-strip" style="background-image:url('${strip}')"></div>
-      <div class="mission-body">
-        <header class="mission-head">
-          <h3 class="mission-title">${escapeHtml(card.title)}</h3>
-          <button type="button" class="mission-info" data-info="${card.sku}" title="${escapeHtml(this.tracker.t(255, "Info de la misión"))}">
-            <img src="${SPRITES.info}" alt="info" />
-          </button>
-        </header>
-        ${body}
+      <div class="mission-row-top">
+        <h3 class="mission-title">${escapeHtml(card.title)}</h3>
+        <button type="button" class="mission-info" data-info="${card.sku}" title="${escapeHtml(this.tracker.t(255, "Info de la misión"))}">
+          <img src="${SPRITES.info}" alt="info" />
+        </button>
       </div>
+      <div class="mission-row-bottom">
+        <div class="mission-reward-row${card.state === "locked" ? " muted" : ""}">
+          <img class="mission-cash-icon" src="${SPRITES.cash}" alt="" />
+          <strong>${reward}</strong>
+        </div>
+        ${statusHtml}
+      </div>
+      ${unlock}
     `;
 
     el.querySelector("[data-info]")?.addEventListener("click", (e) => {
@@ -211,10 +184,10 @@ export class MissionsUI {
       <div class="mission-detail-card">
         <h3>${escapeHtml(card.title)}</h3>
         <p class="mission-detail-label">${escapeHtml(title)}</p>
-        <p class="mission-detail-desc">${escapeHtml(card.description)}</p>
+        <p class="mission-detail-desc">${replaceDollarSymbols(escapeHtml(card.description))}</p>
         ${
           card.state === "locked" && card.unlockText
-            ? `<p class="mission-detail-lock">${escapeHtml(card.unlockText)}</p>`
+            ? `<p class="mission-detail-lock">${replaceDollarSymbols(escapeHtml(card.unlockText))}</p>`
             : ""
         }
         <button type="button" class="mission-detail-ok">OK</button>

@@ -2,28 +2,42 @@ import { loadGameData, enrichCatalog } from "./data.js";
 import { Grid } from "./map/grid.js";
 import { Renderer } from "./map/renderer.js";
 import { RoadLayer } from "./map/roads.js";
+import { RiverLayer } from "./map/river.js";
+import { ExpansionLayer } from "./map/expansions.js";
+import { ZeppelinFlyer } from "./map/zeppelin.js";
 import { ShopUI } from "./ui/shop.js";
 import { MissionTracker, companyValueFromGrid } from "./missions.js";
 import { MissionsUI } from "./ui/missions.js";
 import { ContractsUI } from "./ui/contracts.js";
 import { BuildingTooltip } from "./ui/tooltip.js";
 import { EconomySim } from "./sim.js";
-import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE } from "./economy.js";
+import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady } from "./economy.js";
+import { cashHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
 
 const TILE = 32;
-const START_CASH = 500_000;
+const START_CASH = 50_000_000;
+const START_GOLD = 15;
+const START_DIAMONDS = 2;
+const GOLD_DROP_CHANCE = 1 / 13;
+const DIAMOND_DROP_CHANCE = 1 / 20;
 
 const state = {
   cash: START_CASH,
+  gold: START_GOLD,
+  diamonds: START_DIAMONDS,
   level: 1,
   xp: 100,
   mode: "place", // place | move | erase | road
+  roadKind: "road", // road | zebra
   selected: null,
 };
 
 const cashEl = document.getElementById("cash");
+const goldEl = document.getElementById("gold");
+const diamondsEl = document.getElementById("diamonds");
 const levelEl = document.getElementById("level");
 const xpEl = document.getElementById("xp");
+const xpFillEl = document.getElementById("xp-fill");
 const hintEl = document.getElementById("hint");
 const canvas = document.getElementById("map");
 
@@ -35,15 +49,50 @@ let sim = null;
 let levelThresholds = null;
 /** @type {import("./map/grid.js").Grid | null} */
 let gridRef = null;
+/** @type {import("./map/renderer.js").Renderer | null} */
+let rendererRef = null;
+
+function xpProgress(xp, level, thresholds) {
+  if (!thresholds?.length) return { pct: 0, label: String(xp) };
+  const floor = thresholds[Math.max(0, level - 1)] ?? 0;
+  const ceil = thresholds[level] ?? floor + Math.max(1, xp - floor);
+  const span = Math.max(1, ceil - floor);
+  const pct = Math.max(0, Math.min(100, ((xp - floor) / span) * 100));
+  return { pct, label: String(xp) };
+}
 
 function refreshHud() {
-  cashEl.textContent = state.cash.toLocaleString("en-US");
+  cashEl.textContent = formatCash(state.cash);
+  if (goldEl) goldEl.textContent = state.gold.toLocaleString("en-US");
+  if (diamondsEl) diamondsEl.textContent = state.diamonds.toLocaleString("en-US");
   levelEl.textContent = String(state.level);
-  xpEl.textContent = String(state.xp);
+  const { pct, label } = xpProgress(state.xp, state.level, levelThresholds);
+  xpEl.textContent = label;
+  if (xpFillEl) xpFillEl.style.width = `${pct}%`;
+}
+
+/** Independent rolls: gold 1/13, diamond 1/20 (can get both). */
+function rollPremiumDrops() {
+  const gotGold = Math.random() < GOLD_DROP_CHANCE;
+  const gotDiamond = Math.random() < DIAMOND_DROP_CHANCE;
+  if (gotGold) state.gold += 1;
+  if (gotDiamond) state.diamonds += 1;
+  const parts = [];
+  if (gotGold) parts.push("+1 lingote");
+  if (gotDiamond) parts.push("+1 diamante");
+  return { gotGold, gotDiamond, suffix: parts.length ? ` · ${parts.join(" · ")}` : "" };
+}
+
+function escapeHint(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function setHint(text) {
-  hintEl.textContent = text;
+  hintEl.innerHTML = replaceCurrencySymbols(escapeHint(text));
 }
 
 function setMode(mode) {
@@ -54,11 +103,22 @@ function setMode(mode) {
   canvas.classList.toggle("mode-road", mode === "road");
   document.getElementById("btn-move").classList.toggle("active", mode === "move");
   document.getElementById("btn-erase").classList.toggle("active", mode === "erase");
-  if (mode === "move") setHint("Clic en un edificio o decoración para moverlo. Clic vacío cancela.");
-  else if (mode === "erase") setHint("Clic/arrastra: borra carretera o edificios (reembolso 50%). Clic vacío cancela.");
-  else if (mode === "road") setHint("Pinta carreteras: recta por defecto; curva/T/cruce según vecinos. Clic vacío cancela.");
+  document.getElementById("btn-road")?.classList.toggle("active", mode === "road");
+  if (rendererRef) {
+    rendererRef.showGrid =
+      (mode === "place" && !!state.selected) || mode === "move" || mode === "road";
+  }
+  if (mode === "move") setHint("Clic en un edificio o decoración para moverlo (cuesta 1/10 del precio). Clic vacío cancela.");
+  else if (mode === "erase") setHint("Clic/arrastra: borra carretera o edificios (reembolso 50% del precio). Clic vacío cancela.");
+  else if (mode === "road") {
+    setHint(
+      state.roadKind === "zebra"
+        ? "Pinta pasos de cebra (mismo coste que carretera). Clic vacío cancela."
+        : "Pinta carreteras: recta por defecto; curva/T/cruce según vecinos. Clic vacío cancela."
+    );
+  }
   else if (state.selected) setHint(`Colocando: ${state.selected.name}. Clic en el mapa.`);
-  else setHint("Arrastra para mover la cámara. Toca una casa (📋) para contrato, o un edificio con $ para cobrar.");
+  else setHint("Arrastra para mover la cámara. Toca una casa para contrato, o un edificio con $ para cobrar.");
 }
 
 function levelFromXp(xp, thresholds) {
@@ -111,11 +171,32 @@ async function main() {
   const roadCost = data.roads.costCoins ?? 500;
   levelThresholds = data.economy.levelCurve?.thresholds || null;
 
-  const grid = new Grid(40, 30, TILE);
+  const MAP_COLS = 96; // 6 × 16
+  const MAP_ROWS = 80; // 5 × 16 → 30 equal parcels
+  const grid = new Grid(MAP_COLS, MAP_ROWS, TILE);
   gridRef = grid;
   const roads = new RoadLayer(grid.cols, grid.rows, data.roads);
+  const river = new RiverLayer(grid.cols, grid.rows, TILE);
+  const expCfg = data.economy.expansions || {};
+  const expansions = new ExpansionLayer(grid.cols, grid.rows, TILE, {
+    zoneW: expCfg.zoneW ?? 16,
+    zoneH: expCfg.zoneH ?? 16,
+    baseCost: expCfg.baseCost ?? 50_000,
+    costGrowth: expCfg.costGrowth ?? 1.4,
+  });
+  grid.river = river;
+  grid.expansions = expansions;
   const renderer = new Renderer(canvas, grid, roads);
-  await Promise.all([renderer.preload(allDefs), roads.preload()]);
+  rendererRef = renderer;
+  renderer.river = river;
+  renderer.expansions = expansions;
+  const zeppelin = new ZeppelinFlyer(grid);
+  renderer.zeppelin = zeppelin;
+  await Promise.all([renderer.preload(allDefs), roads.preload(), zeppelin.preload()]);
+  zeppelin.spawn();
+
+  // River always on the right edge, top → bottom
+  river.generate({ marginRight: 5, bridgeEvery: 11 + Math.floor(Math.random() * 3) });
 
   sim = new EconomySim({
     grid,
@@ -130,6 +211,10 @@ async function main() {
       } else if (type === "commerce_ready") {
         const n = payload.building.runtime?.customers || 0;
         setHint(`${payload.building.def.name} listo (${n} clientes). Toca para cobrar.`);
+      } else if (type === "wonder_gold_ready") {
+        setHint(`${payload.building.def.name}: oro listo. Toca la maravilla para cobrar.`);
+      } else if (type === "wonder_diamond_ready") {
+        setHint(`${payload.building.def.name}: diamante listo. Toca la maravilla para cobrar.`);
       }
     },
   });
@@ -179,41 +264,110 @@ async function main() {
     getContract: (id) => sim.index.contractById[id] || null,
   });
 
-  window.__mc = { state, missions, grid, missionsUi, contractsUi, sim, tooltip, renderer };
+  window.__mc = { state, missions, grid, river, expansions, missionsUi, contractsUi, sim, tooltip, renderer };
+
+  // —— Expansion purchase dialog ——
+  const expandPanel = document.getElementById("expand-panel");
+  const expandPriceEl = document.getElementById("expand-price");
+  /** @type {{ zx: number, zy: number, cost: number } | null} */
+  let pendingExpand = null;
+
+  function hideExpandBuy() {
+    pendingExpand = null;
+    expandPanel.hidden = true;
+    expandPanel.classList.remove("visible");
+  }
+
+  function openExpandBuy(zx, zy) {
+    const cost = expansions.costFor(zx, zy);
+    if (cost == null) return;
+    pendingExpand = { zx, zy, cost };
+    expandPriceEl.innerHTML = cashHtml(cost);
+    expandPanel.hidden = false;
+    requestAnimationFrame(() => expandPanel.classList.add("visible"));
+  }
+
+  function confirmExpandBuy() {
+    if (!pendingExpand) return;
+    const { cost } = pendingExpand;
+    if (state.cash < cost) {
+      setHint("No tienes suficiente efectivo para esta expansión.");
+      hideExpandBuy();
+      return;
+    }
+    const { zx, zy } = pendingExpand;
+    const result = expansions.buy(zx, zy);
+    if (!result.ok) {
+      setHint(result.reason);
+      hideExpandBuy();
+      return;
+    }
+    state.cash -= result.cost;
+    hideExpandBuy();
+    missions?.improve(34); // "Size does Matter"
+    syncMissionValues();
+    refreshHud();
+    setHint(`Expansión comprada por $${result.cost.toLocaleString("en-US")}.`);
+  }
+
+  document.getElementById("expand-close").addEventListener("click", hideExpandBuy);
+  document.getElementById("expand-cancel").addEventListener("click", hideExpandBuy);
+  document.getElementById("expand-buy").addEventListener("click", confirmExpandBuy);
+  expandPanel.addEventListener("click", (e) => {
+    if (e.target === expandPanel) hideExpandBuy();
+  });
 
   document.getElementById("btn-missions").addEventListener("click", () => missionsUi.toggle());
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" && e.code !== "Escape") return;
     e.preventDefault();
-    if (contractsUi.open) contractsUi.hide();
+    if (!expandPanel.hidden) hideExpandBuy();
+    else if (contractsUi.open) contractsUi.hide();
     else if (missionsUi.open) missionsUi.hide();
     else clearActiveTool();
   });
 
-  // Starter bungalow + road stub so economy is playable immediately
+  // Starter bungalow on the single unlocked expansion parcel
   const starter = catalog.houses.find((h) => h.name === "Bungalow") || catalog.houses[0];
   let starterTx = 0;
   let starterTy = 0;
   if (starter) {
-    starterTx = Math.floor(grid.cols / 2) - Math.floor(starter.gridW / 2);
-    starterTy = Math.floor(grid.rows / 2) - Math.floor(starter.gridH / 2);
+    const foot = expansions.starterTileCenter(starter.gridW, starter.gridH);
+    starterTx = foot.tx;
+    starterTy = foot.ty;
     const placed = grid.place(starter, starterTx, starterTy);
     if (placed) initBuilding(placed);
-    // Road ring south of starter (free)
+    // Road ring south of starter (free), only on unlocked tiles
     for (let x = starterTx - 1; x < starterTx + starter.gridW + 1; x++) {
+      if (!expansions.isUnlocked(x, starterTy + starter.gridH)) continue;
       roads.paint(x, starterTy + starter.gridH, true, () => false);
     }
   }
 
+  const shopEl = document.getElementById("shop");
+  const btnShop = document.getElementById("btn-shop");
+
+  function setShopOpen(open) {
+    shopEl.classList.toggle("open", open);
+    btnShop.setAttribute("aria-pressed", open ? "true" : "false");
+    btnShop.classList.toggle("active", open);
+  }
+  setShopOpen(true);
+
   const shop = new ShopUI(
-    document.getElementById("shop"),
+    shopEl,
     catalog,
     (item) => {
       state.selected = item;
       if (item) {
+        setShopOpen(true);
         setMode("place");
         setHint(
-          `Colocando: ${item.name} (${item.gridW}×${item.gridH}). Costo $${item.costCoins.toLocaleString("en-US")}`
+          item.costDiamonds > 0
+            ? `Colocando: ${item.name} (${item.gridW}×${item.gridH}). Costo ${item.costDiamonds} diamantes`
+            : item.costFortune > 0
+            ? `Colocando: ${item.name} (${item.gridW}×${item.gridH}). Costo ${item.costFortune} lingotes`
+            : `Colocando: ${item.name} (${item.gridW}×${item.gridH}). Costo $${(item.costCoins || 0).toLocaleString("en-US")}`
         );
       } else if (state.mode === "place") {
         setMode("place");
@@ -222,8 +376,19 @@ async function main() {
     {
       roadCost,
       onTool: (tool) => {
-        if (tool === "road") setMode("road");
-        else if (state.mode === "road") setMode("place");
+        if (tool === "road") {
+          state.roadKind = "road";
+          setMode("road");
+        } else if (tool === "zebra") {
+          state.roadKind = "zebra";
+          setMode("road");
+        } else if (state.mode === "road") {
+          setMode("place");
+        }
+      },
+      onHover: (item, screenPos) => {
+        if (item && screenPos) tooltip.showCatalog(item, screenPos);
+        else if (tooltip.catalogDef) tooltip.hide();
       },
     }
   );
@@ -243,22 +408,75 @@ async function main() {
   function clearActiveTool() {
     moveDrag = null;
     renderer.hover = null;
+    renderer.radiusFocus = null;
     shop.clearSelection();
     setMode("place");
   }
 
+  btnShop.addEventListener("click", () => {
+    const open = !shopEl.classList.contains("open");
+    setShopOpen(open);
+    if (open) {
+      document.getElementById("btn-move").classList.remove("active");
+      document.getElementById("btn-erase").classList.remove("active");
+      document.getElementById("btn-road").classList.remove("active");
+      if (state.mode === "move" || state.mode === "erase" || state.mode === "road") {
+        moveDrag = null;
+        renderer.hover = null;
+        setMode("place");
+      }
+    }
+  });
+
+  document.getElementById("btn-road").addEventListener("click", () => {
+    shop.clearSelection();
+    moveDrag = null;
+    setShopOpen(false);
+    state.roadKind = "road";
+    shop.tool = state.mode === "road" ? null : "road";
+    setMode(state.mode === "road" ? "place" : "road");
+  });
+
   document.getElementById("btn-move").addEventListener("click", () => {
     shop.clearSelection();
     moveDrag = null;
+    setShopOpen(false);
     setMode(state.mode === "move" ? "place" : "move");
   });
   document.getElementById("btn-erase").addEventListener("click", () => {
     shop.clearSelection();
     moveDrag = null;
+    setShopOpen(false);
     setMode(state.mode === "erase" ? "place" : "erase");
   });
-  document.getElementById("zoom").addEventListener("input", (e) => {
-    renderer.camera.zoom = Number(e.target.value);
+
+  const zoomInput = document.getElementById("zoom");
+  const ZOOM_MAX = 2;
+  /** Zoom out far enough to fit the full map in the viewport. */
+  function zoomMin() {
+    const mapW = grid.cols * TILE;
+    const mapH = grid.rows * TILE;
+    const fit = Math.min(renderer.cssWidth / mapW, renderer.cssHeight / mapH);
+    return Math.max(0.15, Math.min(0.5, fit * 0.92));
+  }
+  function applyZoom(z) {
+    z = Math.min(ZOOM_MAX, Math.max(zoomMin(), z));
+    zoomInput.min = String(zoomMin());
+    zoomInput.value = String(Math.round(z * 100) / 100);
+    renderer.camera.zoom = Number(zoomInput.value);
+  }
+  zoomInput.min = String(zoomMin());
+  zoomInput.addEventListener("input", (e) => {
+    applyZoom(Number(e.target.value));
+  });
+  document.getElementById("zoom-in").addEventListener("click", () => {
+    applyZoom(Number(zoomInput.value) + 0.1);
+  });
+  document.getElementById("zoom-out").addEventListener("click", () => {
+    applyZoom(Number(zoomInput.value) - 0.1);
+  });
+  window.addEventListener("resize", () => {
+    applyZoom(renderer.camera.zoom);
   });
 
   function pointerPos(e) {
@@ -281,9 +499,25 @@ async function main() {
     return false;
   }
 
+  function moveCostOf(def) {
+    return Math.floor((def.costCoins || 0) / 10);
+  }
+
   function canDropBuilding(building, tx, ty) {
     const def = building.def;
-    return grid.canPlace(tx, ty, def.gridW, def.gridH, building.id) && !footprintOnRoad(tx, ty, def);
+    const sameSpot = building.tx === tx && building.ty === ty;
+    const cost = sameSpot ? 0 : moveCostOf(def);
+    return (
+      grid.canPlace(tx, ty, def.gridW, def.gridH, building.id) &&
+      !footprintOnRoad(tx, ty, def) &&
+      state.cash >= cost
+    );
+  }
+
+  function hasInfluenceRadius(def) {
+    const client = def.clientRadiusTiles;
+    const infl = def.influenceRadiusTiles;
+    return (client != null && client >= 0) || (infl != null && infl >= 0);
   }
 
   function startCamDrag(p) {
@@ -294,7 +528,7 @@ async function main() {
   }
 
   function blockedForRoad(tx, ty) {
-    return !!grid.buildingAt(tx, ty);
+    return !!grid.buildingAt(tx, ty) || river.has(tx, ty) || !expansions.isUnlocked(tx, ty);
   }
 
   function paintRoadAt(tx, ty) {
@@ -302,12 +536,21 @@ async function main() {
       setHint("No se puede poner carretera sobre un edificio.");
       return;
     }
-    if (roads.has(tx, ty)) return;
+    const kind = state.roadKind === "zebra" ? "zebra" : "road";
+    if (roads.has(tx, ty)) {
+      // Allow converting an existing road tile into a zebra crossing (no extra charge).
+      if (kind === "zebra" && roads.kindAt(tx, ty) !== "zebra") {
+        roads.paint(tx, ty, true, blockedForRoad, "zebra");
+        sim.recomputeAll();
+        refreshHud();
+      }
+      return;
+    }
     if (state.cash < roadCost) {
       setHint("No tienes suficiente efectivo.");
       return;
     }
-    if (roads.paint(tx, ty, true, blockedForRoad)) {
+    if (roads.paint(tx, ty, true, blockedForRoad, kind)) {
       state.cash -= roadCost;
       sim.recomputeAll();
       syncMissionValues();
@@ -318,21 +561,42 @@ async function main() {
   function eraseAt(tx, ty) {
     if (roads.has(tx, ty)) {
       roads.paint(tx, ty, false);
-      state.cash += Math.floor(roadCost * 0.5);
-      sim.recomputeAll();
-      syncMissionValues();
-      refreshHud();
-      setHint("Carretera borrada.");
-      return true;
-    }
-    const removed = grid.eraseAt(tx, ty);
-    if (removed) {
-      const refund = Math.floor((removed.def.costCoins || 0) * 0.5);
+      const refund = Math.floor(roadCost * 0.5);
       state.cash += refund;
       sim.recomputeAll();
       syncMissionValues();
       refreshHud();
-      setHint(`Borrado ${removed.def.name}. Reembolso $${refund.toLocaleString("en-US")}`);
+      setHint(`Carretera borrada. Reembolso $${refund.toLocaleString("en-US")}`);
+      return true;
+    }
+    const removed = grid.eraseAt(tx, ty);
+    if (removed) {
+      const diamondPrice = removed.def.costDiamonds || 0;
+      const goldPrice = removed.def.costFortune || 0;
+      const cashPrice = removed.def.costCoins || 0;
+      if (diamondPrice > 0) {
+        const refund = Math.floor(diamondPrice * 0.5);
+        state.diamonds += refund;
+        setHint(
+          `Borrado ${removed.def.name}. Reembolso 50%: ${refund} diamantes (de ${diamondPrice})`
+        );
+      } else if (goldPrice > 0) {
+        const refund = Math.floor(goldPrice * 0.5);
+        state.gold += refund;
+        setHint(
+          `Borrado ${removed.def.name}. Reembolso 50%: ${refund} lingotes (de ${goldPrice})`
+        );
+      } else {
+        const refund = Math.floor(cashPrice * 0.5);
+        state.cash += refund;
+        setHint(
+          `Borrado ${removed.def.name}. Reembolso 50%: $${refund.toLocaleString("en-US")}` +
+            (cashPrice ? ` (de $${cashPrice.toLocaleString("en-US")})` : "")
+        );
+      }
+      sim.recomputeAll();
+      syncMissionValues();
+      refreshHud();
       return true;
     }
     return false;
@@ -361,11 +625,14 @@ async function main() {
       const result = sim.collectRent(building);
       if (!result.ok) return;
       state.cash += result.cash;
+      const drops = rollPremiumDrops();
       missions.onRentCollected();
       applyXp(result.xp || 0);
       syncMissionValues();
       refreshHud();
-      setHint(`Cobrado alquiler de ${building.def.name}: +$${result.cash.toLocaleString("en-US")}`);
+      setHint(
+        `Cobrado alquiler de ${building.def.name}: +$${result.cash.toLocaleString("en-US")}${drops.suffix}`
+      );
       return;
     }
 
@@ -373,12 +640,26 @@ async function main() {
       const result = sim.collectCommerce(building);
       if (!result.ok) return;
       state.cash += result.cash;
+      const drops = rollPremiumDrops();
       missions.onCommerceCollected(building.def.objectId);
       syncMissionValues();
       refreshHud();
       setHint(
-        `Cobrado ${building.def.name}: +$${result.cash.toLocaleString("en-US")} (${result.customers} clientes)`
+        `Cobrado ${building.def.name}: +$${result.cash.toLocaleString("en-US")} (${result.customers} clientes)${drops.suffix}`
       );
+      return;
+    }
+
+    if (action === "collect_wonder") {
+      const result = sim.collectWonder(building);
+      if (!result.ok) return;
+      if (result.gold) state.gold += result.gold;
+      if (result.diamonds) state.diamonds += result.diamonds;
+      refreshHud();
+      const parts = [];
+      if (result.gold) parts.push(`+${result.gold} lingote${result.gold === 1 ? "" : "s"}`);
+      if (result.diamonds) parts.push(`+${result.diamonds} diamante${result.diamonds === 1 ? "" : "s"}`);
+      setHint(`Cobrado ${building.def.name}: ${parts.join(" · ")}`);
       return;
     }
 
@@ -390,6 +671,14 @@ async function main() {
       setHint(
         `${building.def.name}: ${building.runtime.customers || 0} clientes · cobra en ${formatDuration(building.runtime.remainingMs / TIME_SCALE)}.`
       );
+    } else if (building.def.category === "wonder" && building.runtime) {
+      const rt = building.runtime;
+      const goldLeft = wonderGoldRemainingMs(rt);
+      const diaLeft = wonderDiamondRemainingMs(rt);
+      const parts = [];
+      parts.push(wonderGoldReady(rt) ? "oro listo" : `oro en ${formatDuration(goldLeft)}`);
+      parts.push(wonderDiamondReady(rt) ? "diamante listo" : `diamante en ${formatDuration(diaLeft)}`);
+      setHint(`${building.def.name}: ${parts.join(" · ")}`);
     }
   }
 
@@ -432,17 +721,33 @@ async function main() {
       const { building, ox, oy } = moveDrag;
       const dropTx = tx - ox;
       const dropTy = ty - oy;
+      const sameSpot = building.tx === dropTx && building.ty === dropTy;
+      const cost = sameSpot ? 0 : moveCostOf(building.def);
       if (canDropBuilding(building, dropTx, dropTy)) {
         if (grid.move(building, dropTx, dropTy)) {
+          if (cost > 0) {
+            state.cash -= cost;
+            refreshHud();
+          }
           sim.recomputeAll();
           syncMissionValues();
-          setHint(`Movido: ${building.def.name}`);
+          setHint(
+            sameSpot
+              ? `Sin cambio: ${building.def.name}`
+              : `Movido: ${building.def.name}. Coste $${cost.toLocaleString("en-US")}`
+          );
         }
         moveDrag = null;
         renderer.hover = null;
       } else {
         updateMoveHover(tx, ty);
-        setHint("No se puede soltar aquí (ocupado, fuera del mapa o sobre carretera). Esc cancela.");
+        if (state.cash < cost) {
+          setHint(
+            `No tienes suficiente efectivo para mover (cuesta $${cost.toLocaleString("en-US")}). Esc cancela.`
+          );
+        } else {
+          setHint("No se puede soltar aquí (ocupado, fuera del mapa o sobre carretera). Esc cancela.");
+        }
       }
       return;
     }
@@ -454,10 +759,13 @@ async function main() {
         startCamDrag(p);
         return;
       }
+      const cost = moveCostOf(hit.def);
       moveDrag = { building: hit, ox: tx - hit.tx, oy: ty - hit.ty };
       updateMoveHover(tx, ty);
       tooltip.hide();
-      setHint(`Moviendo ${hit.def.name}. Clic para soltar.`);
+      setHint(
+        `Moviendo ${hit.def.name}. Coste al soltar: $${cost.toLocaleString("en-US")}. Clic para soltar.`
+      );
       return;
     }
 
@@ -485,7 +793,20 @@ async function main() {
 
     if (state.mode === "place" && state.selected) {
       const def = state.selected;
-      if (state.cash < def.costCoins) {
+      const diamondCost = def.costDiamonds || 0;
+      const goldCost = def.costFortune || 0;
+      const cashCost = def.costCoins || 0;
+      if (diamondCost > 0) {
+        if (state.diamonds < diamondCost) {
+          setHint("No tienes suficientes diamantes.");
+          return;
+        }
+      } else if (goldCost > 0) {
+        if (state.gold < goldCost) {
+          setHint("No tienes suficientes lingotes de oro.");
+          return;
+        }
+      } else if (state.cash < cashCost) {
         setHint("No tienes suficiente efectivo.");
         return;
       }
@@ -497,7 +818,9 @@ async function main() {
       const placed = grid.place(def, tx, ty);
       if (placed) {
         initBuilding(placed);
-        state.cash -= def.costCoins;
+        if (diamondCost > 0) state.diamonds -= diamondCost;
+        else if (goldCost > 0) state.gold -= goldCost;
+        else state.cash -= cashCost;
         missions?.onBuildingBought(def);
         applyXp(def.exp || 0);
         syncMissionValues();
@@ -507,7 +830,13 @@ async function main() {
       return;
     }
 
-    // Idle: tap building to interact, or drag empty map to pan
+    // Idle: buy adjacent expansion, tap building, or pan
+    const zone = expansions.zoneAt(tx, ty);
+    if (zone && expansions.isBuyable(zone.zx, zone.zy)) {
+      openExpandBuy(zone.zx, zone.zy);
+      return;
+    }
+
     const hit = grid.buildingAt(tx, ty);
     if (hit) {
       pendingInteract = hit;
@@ -539,6 +868,7 @@ async function main() {
       renderer.camera.y -= (p.y - lastY) / z;
       lastX = p.x;
       lastY = p.y;
+      renderer.radiusFocus = null;
       tooltip.hide();
       return;
     }
@@ -548,6 +878,7 @@ async function main() {
 
     if (moveDrag) {
       updateMoveHover(tx, ty);
+      renderer.radiusFocus = null;
       tooltip.hide();
       return;
     }
@@ -571,12 +902,17 @@ async function main() {
         road: true,
         valid: !blockedForRoad(tx, ty) && state.cash >= roadCost,
       };
+      renderer.expandHover = null;
+      renderer.radiusFocus = null;
       tooltip.hide();
     } else if (state.mode === "move") {
       const hit = grid.buildingAt(tx, ty);
       renderer.hover = hit
         ? { tx: hit.tx, ty: hit.ty, def: hit.def, valid: true }
         : null;
+      renderer.expandHover = null;
+      renderer.radiusFocus =
+        hit && hasInfluenceRadius(hit.def) ? { tx: hit.tx, ty: hit.ty, def: hit.def } : null;
       tooltip.hide();
     } else if (state.mode === "place" && state.selected) {
       const def = state.selected;
@@ -584,20 +920,43 @@ async function main() {
         tx,
         ty,
         def,
-        valid: grid.canPlace(tx, ty, def.gridW, def.gridH) && state.cash >= def.costCoins && !footprintOnRoad(tx, ty, def),
+        valid:
+          grid.canPlace(tx, ty, def.gridW, def.gridH) &&
+          !footprintOnRoad(tx, ty, def) &&
+          ((def.costDiamonds || 0) > 0
+            ? state.diamonds >= def.costDiamonds
+            : (def.costFortune || 0) > 0
+              ? state.gold >= def.costFortune
+              : state.cash >= (def.costCoins || 0)),
       };
+      renderer.expandHover = null;
+      renderer.radiusFocus = hasInfluenceRadius(def) ? { tx, ty, def } : null;
       tooltip.hide();
     } else if (state.mode === "place" && !state.selected && !camDragging && !paintDragging) {
       renderer.hover = null;
+      const zone = expansions.zoneAt(tx, ty);
+      renderer.expandHover =
+        zone && expansions.isBuyable(zone.zx, zone.zy) ? { zx: zone.zx, zy: zone.zy } : null;
       const hit = grid.buildingAt(tx, ty);
-      if (hit && (hit.def.category === "house" || hit.def.category === "commercial")) {
+      if (hit && hasInfluenceRadius(hit.def)) {
+        renderer.radiusFocus = { tx: hit.tx, ty: hit.ty, def: hit.def };
+      } else {
+        renderer.radiusFocus = null;
+      }
+      if (hit && (hit.def.category === "house" || hit.def.category === "commercial" || hit.def.category === "wonder")) {
         const anchor = renderer.buildingAnchorScreen(hit);
         tooltip.show(hit, { left: anchor.x, top: anchor.y });
+      } else if (renderer.expandHover) {
+        const cost = expansions.costFor(renderer.expandHover.zx, renderer.expandHover.zy);
+        setHint(`Expansión en venta: $${(cost || 0).toLocaleString("en-US")}. Toca para comprar.`);
+        tooltip.hide();
       } else {
         tooltip.hide();
       }
     } else {
       renderer.hover = null;
+      renderer.expandHover = null;
+      renderer.radiusFocus = null;
       tooltip.hide();
     }
   });
@@ -613,6 +972,8 @@ async function main() {
   });
   canvas.addEventListener("pointerleave", () => {
     if (!moveDrag) renderer.hover = null;
+    renderer.expandHover = null;
+    renderer.radiusFocus = null;
     tooltip.hide();
   });
 
@@ -620,11 +981,7 @@ async function main() {
     "wheel",
     (e) => {
       e.preventDefault();
-      const zoomInput = document.getElementById("zoom");
-      let z = Number(zoomInput.value) - Math.sign(e.deltaY) * 0.1;
-      z = Math.min(2, Math.max(0.5, z));
-      zoomInput.value = String(z);
-      renderer.camera.zoom = z;
+      applyZoom(Number(zoomInput.value) - Math.sign(e.deltaY) * 0.1);
     },
     { passive: false }
   );
@@ -639,6 +996,7 @@ async function main() {
     const dt = ts - lastTs;
     lastTs = ts;
     sim.update(dt);
+    zeppelin.update(dt);
     // Keep tooltip timer live while hovering
     if (tooltip.building && !tooltip.root.hidden) {
       const anchor = renderer.buildingAnchorScreen(tooltip.building);

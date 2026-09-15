@@ -1,6 +1,6 @@
 /** Tile grid occupancy and placement rules. */
 export class Grid {
-  constructor(cols = 40, rows = 30, tile = 32) {
+  constructor(cols = 80, rows = 60, tile = 32) {
     this.cols = cols;
     this.rows = rows;
     this.tile = tile;
@@ -8,6 +8,10 @@ export class Grid {
     this.cells = new Array(cols * rows).fill(null);
     /** @type {{id:string, def:object, tx:number, ty:number}[]} */
     this.buildings = [];
+    /** @type {import("./river.js").RiverLayer|null} */
+    this.river = null;
+    /** @type {import("./expansions.js").ExpansionLayer|null} */
+    this.expansions = null;
     this._nextId = 1;
   }
 
@@ -21,8 +25,10 @@ export class Grid {
 
   canPlace(tx, ty, w, h, ignoreId = null) {
     if (!this.inBounds(tx, ty, w, h)) return false;
+    if (this.expansions && !this.expansions.canBuild(tx, ty, w, h)) return false;
     for (let y = ty; y < ty + h; y++) {
       for (let x = tx; x < tx + w; x++) {
+        if (this.river?.occupies(x, y)) return false;
         const cell = this.cells[this.index(x, y)];
         if (cell && cell.id !== ignoreId) return false;
       }

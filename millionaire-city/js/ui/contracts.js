@@ -1,3 +1,5 @@
+import { cashIconHtml, formatCash } from "./money.js";
+
 /**
  * Contract selection modal for a house.
  */
@@ -68,8 +70,8 @@ export class ContractsUI {
       btn.innerHTML = `
         <div class="contract-name">${escapeHtml(name)}</div>
         <div class="contract-stats">
-          <span title="Coste"><em>$</em> ${p.cost.toLocaleString("en-US")}</span>
-          <span title="Ingreso"><em>↓$</em> ${p.income.toLocaleString("en-US")}</span>
+          <span title="Coste">${cashIconHtml()} ${formatCash(p.cost)}</span>
+          <span title="Ingreso">${cashIconHtml("cash-ico cash-ico--income")} ${formatCash(p.income)}</span>
           <span title="Inquilinos">👤 ${p.tenants}</span>
           <span title="XP">★ ${p.xp}</span>
           <span title="Duración">⏱ ${formatMin(c.durationSec)}</span>

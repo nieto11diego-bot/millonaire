@@ -24,8 +24,18 @@ $listener.Prefixes.Add($prefix)
 try {
   $listener.Start()
 } catch {
-  Write-Host "No se pudo abrir el puerto $Port. Prueba otro: .\serve.ps1 -Port 8090"
-  throw
+  $alt = $Port + 1
+  Write-Host "Puerto $Port ocupado. Probando $alt..."
+  $Port = $alt
+  $prefix = "http://localhost:$Port/"
+  $listener = New-Object System.Net.HttpListener
+  $listener.Prefixes.Add($prefix)
+  try {
+    $listener.Start()
+  } catch {
+    Write-Host "No se pudo abrir el puerto. Prueba: .\serve.ps1 -Port 8090"
+    throw
+  }
 }
 
 Write-Host "Sirviendo $Root"

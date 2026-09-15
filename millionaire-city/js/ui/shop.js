@@ -1,3 +1,5 @@
+import { cashHtml, costHtml } from "./money.js";
+
 /**
  * Shop panel: lists catalog items and reports selection.
  */
@@ -6,13 +8,18 @@ export class ShopUI {
    * @param {HTMLElement} root
    * @param {{ houses: object[], commerces: object[], decorations: object[] }} catalog
    * @param {(item: object|null) => void} onSelect
-   * @param {{ roadCost?: number, onTool?: (tool: string|null) => void }} [options]
+   * @param {{
+   *   roadCost?: number,
+   *   onTool?: (tool: string|null) => void,
+   *   onHover?: (item: object|null, screenPos?: { left: number, top: number }|null) => void,
+   * }} [options]
    */
   constructor(root, catalog, onSelect, options = {}) {
     this.root = root;
     this.catalog = catalog;
     this.onSelect = onSelect;
     this.onTool = options.onTool || (() => {});
+    this.onHover = options.onHover || (() => {});
     this.roadCost = options.roadCost ?? 500;
     this.selected = null;
     this.tool = null;
@@ -27,6 +34,7 @@ export class ShopUI {
         this.tool = null;
         this.onSelect(null);
         this.onTool(null);
+        this.onHover(null);
         this.render();
       });
     });
@@ -40,27 +48,58 @@ export class ShopUI {
     this.tool = null;
     this.onSelect(null);
     this.onTool(null);
+    this.onHover(null);
     this.render();
   }
 
   itemsForTab() {
+    let items;
     switch (this.tab) {
       case "houses":
-        return this.catalog.houses || [];
+        items = this.catalog.houses || [];
+        break;
       case "commerces":
-        return this.catalog.commerces || [];
+        items = this.catalog.commerces || [];
+        break;
       case "decorations":
-        return this.catalog.decorations || [];
+        items = this.catalog.decorations || [];
+        break;
+      case "wonders":
+        items = this.catalog.wonders || [];
+        break;
       default:
         return [];
     }
+    return [...items].sort((a, b) => {
+      const ca =
+        (a.costDiamonds || 0) * 1_000_000_000_000 +
+        (a.costFortune || 0) * 1_000_000_000 +
+        (a.costCoins || 0);
+      const cb =
+        (b.costDiamonds || 0) * 1_000_000_000_000 +
+        (b.costFortune || 0) * 1_000_000_000 +
+        (b.costCoins || 0);
+      return ca - cb;
+    });
   }
 
   subtitle(item) {
-    const cost = item.costCoins != null ? item.costCoins.toLocaleString("en-US") : "?";
     const size = `${item.gridW}×${item.gridH}`;
+    const costLabel = costHtml(item);
+    const meta = (extra) => `${costLabel}<span class="shop-sub-meta">· ${extra}</span>`;
     if (item.clientRadiusTiles != null) {
-      return `$${cost} · ${size} · radio ${item.clientRadiusTiles}`;
+      return meta(`${size} · radio ${item.clientRadiusTiles}`);
+    }
+    if (item.cityBonusScaled != null || item.cityBonusPercentApprox != null) {
+      const pct =
+        item.cityBonusPercentApprox != null
+          ? item.cityBonusPercentApprox
+          : Math.round((item.cityBonusScaled / 100) * 100) / 100;
+      const infl =
+        item.influenceRadiusTiles != null && item.influenceRadiusTiles >= 0
+          ? ` · infl. ${item.influenceRadiusTiles}`
+          : "";
+      return meta(`${size} · ciudad +${pct}%${infl}`);
     }
     if (item.houseBonusPercentApprox != null || item.houseBonusScaled != null) {
       const pct =
@@ -68,14 +107,25 @@ export class ShopUI {
           ? item.houseBonusPercentApprox
           : Math.round((item.houseBonusScaled / 100) * 100) / 100;
       const infl = item.influenceRadiusTiles != null ? ` · infl. ${item.influenceRadiusTiles}` : "";
-      return `$${cost} · ${size} · +${pct}%${infl}`;
+      return meta(`${size} · +${pct}%${infl}`);
     }
-    return `$${cost} · ${size}`;
+    return meta(size);
+  }
+
+  _tipPos(btn) {
+    const stage = this.root.closest(".stage") || document.body;
+    const sr = stage.getBoundingClientRect();
+    const br = btn.getBoundingClientRect();
+    return {
+      left: br.right - sr.left + 10,
+      top: br.top - sr.top + br.height / 2,
+    };
   }
 
   render() {
     const list = this.listEl;
     list.innerHTML = "";
+    this.onHover(null);
 
     if (this.tab === "tools") {
       const roadBtn = document.createElement("button");
@@ -85,7 +135,7 @@ export class ShopUI {
         <img src="assets/roads/straight_ew.png" alt="" />
         <div class="meta">
           <div class="name">Carretera</div>
-          <div class="sub">$${this.roadCost.toLocaleString("en-US")} / tile</div>
+          <div class="sub">${cashHtml(this.roadCost)} / tile</div>
         </div>
       `;
       roadBtn.addEventListener("click", () => {
@@ -97,10 +147,29 @@ export class ShopUI {
       });
       list.appendChild(roadBtn);
 
+      const zebraBtn = document.createElement("button");
+      zebraBtn.type = "button";
+      zebraBtn.className = "card" + (this.tool === "zebra" ? " selected" : "");
+      zebraBtn.innerHTML = `
+        <img src="assets/roads/r1_0623.png" alt="" />
+        <div class="meta">
+          <div class="name">Paso de cebra</div>
+          <div class="sub">${cashHtml(this.roadCost)} / tile</div>
+        </div>
+      `;
+      zebraBtn.addEventListener("click", () => {
+        this.selected = null;
+        this.onSelect(null);
+        this.tool = this.tool === "zebra" ? null : "zebra";
+        this.onTool(this.tool);
+        this.render();
+      });
+      list.appendChild(zebraBtn);
+
       const help = document.createElement("p");
-      help.style.cssText = "color:var(--muted);font-size:0.8rem;padding:0.5rem;margin:0";
+      help.style.cssText = "color:#1a5f96;font-size:0.8rem;padding:0.5rem;margin:0;font-weight:600";
       help.innerHTML =
-        "Pinta arrastrando. Recta por defecto; curva / T / cruce solo según vecinos. <strong>Mover</strong> reubica edificios; <strong>Borrar</strong> los quita. Clic vacío o Esc cancela la herramienta.";
+        "Pinta arrastrando. Recta por defecto; curva / T / cruce solo según vecinos. <strong>Paso de cebra</strong> fija el cruce peatonal. <strong>Mover</strong> reubica edificios; <strong>Borrar</strong> los quita. Clic vacío o Esc cancela la herramienta.";
       list.appendChild(help);
       return;
     }
@@ -124,7 +193,7 @@ export class ShopUI {
       btn.addEventListener("click", () => {
         this.tool = null;
         this.onTool(null);
-        // Toggle: second click clears selection so map hover tooltips work
+        this.onHover(null);
         if (this.selected === item) {
           this.selected = null;
           this.onSelect(null);
@@ -134,6 +203,19 @@ export class ShopUI {
         }
         this.render();
       });
+
+      if (item.category === "house" || item.category === "commercial" || item.category === "wonder") {
+        btn.addEventListener("pointerenter", () => {
+          this.onHover(item, this._tipPos(btn));
+        });
+        btn.addEventListener("pointermove", () => {
+          this.onHover(item, this._tipPos(btn));
+        });
+        btn.addEventListener("pointerleave", () => {
+          this.onHover(null);
+        });
+      }
+
       list.appendChild(btn);
     }
   }

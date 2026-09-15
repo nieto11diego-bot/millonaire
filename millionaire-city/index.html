@@ -4,49 +4,85 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Millionaire City — prototipo mapa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Lilita+One&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/game.css" />
 </head>
 <body>
   <div id="app">
-    <header class="topbar">
-      <div class="brand">Millionaire City</div>
-      <div class="hud">
-        <span class="stat" title="Efectivo"><em>$</em> <strong id="cash">500000</strong></span>
-        <span class="stat" title="Nivel">Nv <strong id="level">1</strong></span>
-        <span class="stat" title="XP"><strong id="xp">100</strong> XP</span>
-      </div>
-      <button type="button" class="advisor-btn" id="btn-missions" title="Misiones">
-        <img src="assets/ui/advisor.png" alt="" />
-        <span>Misiones</span>
-        <em class="badge" id="missions-badge" hidden>0</em>
-      </button>
-      <div class="hint" id="hint">Elige un edificio en la tienda y haz clic en el mapa.</div>
-    </header>
+    <main class="stage">
+      <canvas id="map" width="960" height="640"></canvas>
+      <div id="building-tooltip" class="bldg-tip" hidden></div>
 
-    <main class="workspace">
-      <aside class="shop" id="shop">
-        <h2>Tienda</h2>
-        <div class="tabs">
-          <button type="button" class="tab active" data-tab="houses">Casas</button>
-          <button type="button" class="tab" data-tab="commerces">Comercios</button>
-          <button type="button" class="tab" data-tab="decorations">Decoración</button>
-          <button type="button" class="tab" data-tab="tools">Herramientas</button>
+      <header class="hud-top">
+        <div class="xp-hud" title="Experiencia">
+          <div class="xp-star"><span id="level">1</span></div>
+          <div class="xp-track">
+            <div class="xp-fill" id="xp-fill"></div>
+            <span class="xp-label" id="xp">100</span>
+          </div>
         </div>
-        <div class="catalog" id="catalog"></div>
+        <div class="city-title">
+          <h1>Millionaire City</h1>
+        </div>
+        <div class="hud-money">
+          <div class="money-row" title="Dólares">
+            <img class="money-icon" src="assets/ui/icon_cash.png" alt="" />
+            <strong id="cash">50000000</strong>
+          </div>
+          <div class="money-row money-row--gold" title="Lingotes de oro">
+            <img class="money-icon" src="assets/ui/icon_gold.svg" alt="" />
+            <strong id="gold">0</strong>
+          </div>
+          <div class="money-row money-row--diamond" title="Diamantes">
+            <img class="money-icon money-icon--diamond" src="assets/ui/icon_diamond.svg" alt="" />
+            <strong id="diamonds">0</strong>
+          </div>
+        </div>
+      </header>
+
+      <p class="hint" id="hint" aria-live="polite"></p>
+
+      <aside class="shop" id="shop">
+        <div class="shop-tray">
+          <div class="tabs">
+            <button type="button" class="tab active" data-tab="houses">Casas</button>
+            <button type="button" class="tab" data-tab="commerces">Comercios</button>
+            <button type="button" class="tab" data-tab="decorations">Decoración</button>
+            <button type="button" class="tab" data-tab="wonders">Maravillas</button>
+            <button type="button" class="tab" data-tab="tools">Herramientas</button>
+          </div>
+          <div class="catalog" id="catalog"></div>
+        </div>
       </aside>
 
-      <section class="stage">
-        <canvas id="map" width="960" height="640"></canvas>
-        <div id="building-tooltip" class="bldg-tip" hidden></div>
-        <div class="stage-tools">
-          <button type="button" id="btn-move" title="Mover edificios y decoración">Mover</button>
-          <button type="button" id="btn-erase" title="Borrar edificio">Borrar</button>
-          <label class="zoom">
-            Zoom
-            <input type="range" id="zoom" min="0.5" max="2" step="0.1" value="1" />
-          </label>
+      <div class="zoom-stack">
+        <button type="button" id="zoom-in" class="zoom-btn" title="Acercar">+</button>
+        <button type="button" id="zoom-out" class="zoom-btn" title="Alejar">−</button>
+        <input type="range" id="zoom" min="0.2" max="2" step="0.05" value="1" hidden />
+      </div>
+
+      <nav class="dock" aria-label="Herramientas">
+        <div class="dock-inner">
+          <button type="button" class="dock-btn advisor-btn" id="btn-missions" title="Misiones">
+            <span class="dock-glyph missions" aria-hidden="true">!</span>
+            <em class="badge" id="missions-badge" hidden>0</em>
+          </button>
+          <button type="button" class="dock-btn" id="btn-shop" title="Tienda" aria-pressed="true">
+            <span class="dock-glyph house" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="dock-btn" id="btn-road" title="Carretera">
+            <span class="dock-glyph road" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="dock-btn" id="btn-move" title="Mover edificios y decoración">
+            <span class="dock-glyph move" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="dock-btn" id="btn-erase" title="Borrar">
+            <span class="dock-glyph erase" aria-hidden="true"></span>
+          </button>
         </div>
-      </section>
+      </nav>
     </main>
 
     <div id="missions-panel" class="missions-panel" hidden>
@@ -78,8 +114,37 @@
         <div class="contracts-list" id="contracts-list"></div>
       </div>
     </div>
+
+    <div id="expand-panel" class="expand-panel" hidden>
+      <div class="expand-window" role="dialog" aria-labelledby="expand-title">
+        <header class="expand-header">
+          <h2 id="expand-title">Comprar expansión</h2>
+          <button type="button" id="expand-close" class="missions-close" aria-label="Cerrar">×</button>
+        </header>
+        <p class="expand-copy">¡Consigue más terreno para que tu ciudad florezca!</p>
+        <p class="expand-ask">¿Quieres comprar esta expansión?</p>
+        <p class="expand-price" id="expand-price"><span class="cash-amt"><img class="cash-ico" src="assets/ui/icon_cash.png" alt="" /><span>0</span></span></p>
+        <div class="expand-actions">
+          <button type="button" id="expand-cancel" class="expand-btn expand-btn--ghost">Cancelar</button>
+          <button type="button" id="expand-buy" class="expand-btn expand-btn--buy">Comprar</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="js/main.js"></script>
+  <script>
+    // ES modules no funcionan con file:// — hace falta el servidor local.
+    if (location.protocol === "file:") {
+      document.body.innerHTML =
+        '<main style="font:600 1.1rem Fredoka,sans-serif;padding:2rem;max-width:36rem;margin:auto;color:#1a4a72">' +
+        "<h1>No abras index.html a doble clic</h1>" +
+        "<p>Este prototipo usa módulos ES: el navegador bloquea los JS si abres el archivo directamente (<code>file://</code>).</p>" +
+        "<p>En PowerShell, desde la carpeta <code>millionaire-city</code>:</p>" +
+        "<pre style='background:#e8f4ff;padding:1rem;border-radius:12px'>powershell -ExecutionPolicy Bypass -File tools\\serve.ps1</pre>" +
+        "<p>Luego abre <a href='http://localhost:8080/'>http://localhost:8080/</a></p>" +
+        "</main>";
+    }
+  </script>
 </body>
 </html>

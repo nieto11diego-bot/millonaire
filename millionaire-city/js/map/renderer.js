@@ -18,12 +18,24 @@ export class Renderer {
     /** @type {Map<string, HTMLImageElement>} */
     this.images = new Map();
     this.hover = null; // { tx, ty, def, valid } | { tx, ty, road: true, valid }
+    /** @type {{ tx: number, ty: number, def: object } | null} */
+    this.radiusFocus = null;
+    /** @type {import("./zeppelin.js").ZeppelinFlyer|null} */
+    this.zeppelin = null;
+    /** @type {import("./river.js").RiverLayer|null} */
+    this.river = null;
+    /** @type {import("./expansions.js").ExpansionLayer|null} */
+    this.expansions = null;
+    /** Show tile grid only while placing / moving. */
+    this.showGrid = false;
     this.grassPattern = null;
+    /** @type {{ zx: number, zy: number } | null} */
+    this.expandHover = null;
     this._resize();
     window.addEventListener("resize", () => this._resize());
   }
 
-  /** Soft mottled grass matching Millionaire City reference (~#5A7917). */
+  /** Soft mottled grass (#7BA73B). */
   _ensureGrassPattern() {
     if (this.grassPattern) return this.grassPattern;
     const size = 128;
@@ -33,10 +45,10 @@ export class Renderer {
     const g = c.getContext("2d");
     const img = g.createImageData(size, size);
     const d = img.data;
-    // Base / light / dark from reference screenshot samples
-    const base = [90, 121, 23]; // #5A7917
-    const light = [100, 132, 20]; // #648414
-    const dark = [80, 110, 18]; // #506E12
+    // Base / light / dark around #7BA73B
+    const base = [123, 167, 59]; // #7BA73B
+    const light = [138, 182, 72]; // #8AB648
+    const dark = [108, 150, 48]; // #6C9630
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         // Layered value noise for soft lawn grain (not a hard checker)
@@ -81,6 +93,8 @@ export class Renderer {
     const urls = [
       ...new Set(defs.map((d) => d.spriteUrl).filter(Boolean)),
       "assets/ui/icon_cash.png",
+      "assets/ui/icon_gold.svg",
+      "assets/ui/icon_diamond.svg",
     ];
     await Promise.all(
       urls.map(
@@ -145,22 +159,31 @@ export class Renderer {
     ctx.scale(z, z);
     ctx.translate(-mapW / 2 - this.camera.x, -mapH / 2 - this.camera.y);
 
-    // Ground — vibrant MC grass (color matched to reference screenshot)
-    ctx.fillStyle = this._ensureGrassPattern() || "#5A7917";
+    // Ground
+    ctx.fillStyle = this._ensureGrassPattern() || "#7BA73B";
     ctx.fillRect(0, 0, mapW, mapH);
-    ctx.strokeStyle = "rgba(0,0,0,0.12)";
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= cols; x++) {
-      ctx.beginPath();
-      ctx.moveTo(x * tile, 0);
-      ctx.lineTo(x * tile, mapH);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= rows; y++) {
-      ctx.beginPath();
-      ctx.moveTo(0, y * tile);
-      ctx.lineTo(mapW, y * tile);
-      ctx.stroke();
+
+    // River (right edge), over grass, under roads
+    this._drawRiver();
+
+    // Locked expansion parcels + for-sale signs
+    this._drawExpansions();
+
+    if (this.showGrid) {
+      ctx.strokeStyle = "rgba(0,0,0,0.12)";
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= cols; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * tile, 0);
+        ctx.lineTo(x * tile, mapH);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= rows; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * tile);
+        ctx.lineTo(mapW, y * tile);
+        ctx.stroke();
+      }
     }
 
     // Roads under buildings (autotiled)
@@ -168,6 +191,7 @@ export class Renderer {
       for (let ty = 0; ty < rows; ty++) {
         for (let tx = 0; tx < cols; tx++) {
           if (!this.roads.has(tx, ty)) continue;
+          if (this.river?.has(tx, ty)) continue;
           const url = this.roads.spriteFor(tx, ty);
           const img = this.roads.images.get(url) || this.images.get(url);
           if (img) {
@@ -197,25 +221,13 @@ export class Renderer {
       ctx.lineWidth = 2;
       ctx.strokeRect(tx * tile + 1, ty * tile + 1, def.gridW * tile - 2, def.gridH * tile - 2);
 
-      // Commerce customer radius / deco influence radius
-      const radiusTiles =
-        def.clientRadiusTiles != null
-          ? def.clientRadiusTiles + Math.max(def.gridW, def.gridH) / 2
-          : def.influenceRadiusTiles != null
-            ? def.influenceRadiusTiles + Math.max(def.gridW, def.gridH) / 2
-            : null;
-      if (radiusTiles != null && valid) {
-        const cx = tx + def.gridW / 2;
-        const cy = ty + def.gridH / 2;
-        ctx.beginPath();
-        ctx.arc(cx * tile, cy * tile, radiusTiles * tile, 0, Math.PI * 2);
-        ctx.strokeStyle =
-          def.clientRadiusTiles != null ? "rgba(224,177,95,0.7)" : "rgba(138,154,91,0.75)";
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+      if (valid) this._drawInfluenceRadius(tx, ty, def);
+    }
+
+    // Hover influence for placed commerces / decorations
+    if (this.radiusFocus) {
+      const { tx, ty, def } = this.radiusFocus;
+      this._drawInfluenceRadius(tx, ty, def);
     }
 
     // Buildings Y-sorted by bottom of footprint (skip one being dragged)
@@ -237,7 +249,166 @@ export class Renderer {
       this._drawBuilding(this.hover.def, this.hover.tx, this.hover.ty, this.hover.valid ? 0.55 : 0.35);
     }
 
+    // Zeppelin flies above the city
+    this.zeppelin?.draw(ctx);
+
     ctx.restore();
+  }
+
+  _drawRiver() {
+    const river = this.river;
+    const layer = river?.layerCanvas;
+    if (!layer) return;
+    const ctx = this.ctx;
+    const mapW = this.grid.cols * this.grid.tile;
+    const mapH = this.grid.rows * this.grid.tile;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(layer, 0, 0, mapW, mapH);
+  }
+
+  /** Locked parcels (fog) + adjacent For Sale signs. */
+  _drawExpansions() {
+    const exp = this.expansions;
+    if (!exp) return;
+    const ctx = this.ctx;
+    const hover = this.expandHover;
+
+    exp.forEachZone((zx, zy) => {
+      if (exp.isOwnedZone(zx, zy)) return;
+      const r = exp.zoneRect(zx, zy);
+      const buyable = exp.isBuyable(zx, zy);
+      const hovered = hover && hover.zx === zx && hover.zy === zy;
+
+      ctx.fillStyle = buyable
+        ? hovered
+          ? "rgba(40, 90, 30, 0.42)"
+          : "rgba(35, 75, 28, 0.38)"
+        : "rgba(20, 45, 18, 0.55)";
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+
+      ctx.strokeStyle = buyable ? "rgba(255, 245, 180, 0.55)" : "rgba(0, 0, 0, 0.2)";
+      ctx.lineWidth = buyable ? 2 : 1;
+      ctx.setLineDash(buyable ? [8, 6] : []);
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      ctx.setLineDash([]);
+    });
+
+    exp.forEachZone((zx, zy) => {
+      if (!exp.isBuyable(zx, zy)) return;
+      const cost = exp.costFor(zx, zy);
+      const r = exp.zoneRect(zx, zy);
+      const hovered = hover && hover.zx === zx && hover.zy === zy;
+      this._drawForSaleSign(r.x + r.w / 2, r.y + r.h / 2, cost, hovered);
+    });
+  }
+
+  /**
+   * Wooden "EN VENTA" sign with price (MC-style).
+   * @param {number} cx
+   * @param {number} cy
+   * @param {number} cost
+   * @param {boolean} [hovered]
+   */
+  _drawForSaleSign(cx, cy, cost, hovered = false) {
+    const ctx = this.ctx;
+    const scale = hovered ? 1.08 : 1;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+
+    // Post
+    ctx.fillStyle = "#6b4a28";
+    ctx.fillRect(-4, -8, 8, 52);
+    ctx.fillStyle = "#4a3218";
+    ctx.fillRect(-4, 40, 8, 6);
+
+    // Board
+    const bw = 92;
+    const bh = 48;
+    const bx = -bw / 2;
+    const by = -52;
+    ctx.fillStyle = "#c4a35a";
+    ctx.strokeStyle = "#5a3e1c";
+    ctx.lineWidth = 2;
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeRect(bx, by, bw, bh);
+
+    // Inner border
+    ctx.strokeStyle = "rgba(90, 50, 20, 0.35)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 4, by + 4, bw - 8, bh - 8);
+
+    ctx.fillStyle = "#7a1f1a";
+    ctx.font = "bold 11px Fredoka, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("EN VENTA", 0, by + 16);
+
+    ctx.fillStyle = "#1a4a20";
+    ctx.font = "bold 13px Fredoka, sans-serif";
+    const price = Number(cost).toLocaleString("en-US");
+    const cashImg = this.images.get("assets/ui/icon_cash.png");
+    if (cashImg) {
+      const ih = 14;
+      const iw = (cashImg.width / cashImg.height) * ih;
+      const tw = ctx.measureText(price).width;
+      const gap = 4;
+      const total = iw + gap + tw;
+      const x0 = -total / 2;
+      ctx.drawImage(cashImg, x0, by + 34 - ih / 2, iw, ih);
+      ctx.textAlign = "left";
+      ctx.fillText(price, x0 + iw + gap, by + 34);
+      ctx.textAlign = "center";
+    } else {
+      ctx.fillText(price, 0, by + 34);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Commerce client radius / decoration influence radius.
+   * @param {number} tx
+   * @param {number} ty
+   * @param {object} def
+   */
+  _drawInfluenceRadius(tx, ty, def) {
+    const base =
+      def.clientRadiusTiles != null
+        ? def.clientRadiusTiles
+        : def.influenceRadiusTiles != null
+          ? def.influenceRadiusTiles
+          : null;
+    if (base == null || base < 0) return;
+    const radiusTiles = base + Math.max(def.gridW, def.gridH) / 2;
+
+    const ctx = this.ctx;
+    const tile = this.grid.tile;
+    const cx = (tx + def.gridW / 2) * tile;
+    const cy = (ty + def.gridH / 2) * tile;
+    const r = radiusTiles * tile;
+    const isCommerce = def.clientRadiusTiles != null;
+    const isWonder = def.category === "wonder" || def.cityBonusScaled != null;
+    const fill = isCommerce
+      ? "rgba(224,177,95,0.16)"
+      : isWonder
+        ? "rgba(212,168,72,0.16)"
+        : "rgba(138,154,91,0.18)";
+    const stroke = isCommerce
+      ? "rgba(224,177,95,0.9)"
+      : isWonder
+        ? "rgba(196,140,40,0.95)"
+        : "rgba(138,154,91,0.95)";
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   _drawStatus(b) {
@@ -246,8 +417,39 @@ export class Renderer {
     const ctx = this.ctx;
     const tile = this.grid.tile;
     const cx = (b.tx + b.def.gridW / 2) * tile;
-    const top = b.ty * tile - 4;
+    // Anchor to sprite top so badges float above the roof, not mid-building.
+    const { drawY: spriteTop } = spriteOrigin(b.def, b.tx, b.ty, tile);
     const st = rt.status;
+
+    // Wonder premium collect badges (gold / diamond can both be ready)
+    if (b.def.category === "wonder") {
+      const now = Date.now();
+      const icons = [];
+      if (now >= (rt.goldReadyAt || 0)) icons.push("assets/ui/icon_gold.svg");
+      if (now >= (rt.diamondReadyAt || 0)) icons.push("assets/ui/icon_diamond.svg");
+      if (!icons.length) return;
+
+      const iconScale = 1.35;
+      const bob = Math.sin(performance.now() / 280) * 3.5;
+      const gap = 6;
+      let totalW = 0;
+      const sizes = icons.map((url) => {
+        const img = this.images.get(url);
+        if (!img) return null;
+        const w = (url.includes("gold") ? 22 : 24) * iconScale;
+        const h = (img.height / Math.max(1, img.width)) * w;
+        totalW += w;
+        return { img, w, h };
+      });
+      totalW += gap * (icons.length - 1);
+      let x = cx - totalW / 2;
+      for (const sz of sizes) {
+        if (!sz) continue;
+        ctx.drawImage(sz.img, x, spriteTop - 8 - sz.h + bob, sz.w, sz.h);
+        x += sz.w + gap;
+      }
+      return;
+    }
 
     // Progress bar while waiting
     if (st === "waiting" && rt.durationMs > 0) {
@@ -255,7 +457,7 @@ export class Renderer {
       const bw = Math.max(24, b.def.gridW * tile * 0.7);
       const bh = 5;
       const bx = cx - bw / 2;
-      const by = top - 8;
+      const by = spriteTop - 10;
       ctx.fillStyle = "rgba(0,0,0,0.55)";
       ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
       ctx.fillStyle = "#1a2329";
@@ -272,6 +474,7 @@ export class Renderer {
       label = "📋";
       color = "#6a8aa8";
     } else if (st === "ready") {
+      // Cash stack: house rent / commerce profit ready to collect
       spriteUrl = "assets/ui/icon_cash.png";
     } else if (st === "lost") {
       label = "!";
@@ -282,19 +485,22 @@ export class Renderer {
     }
 
     const iconScale = 1.4;
-    const by = top - (st === "waiting" ? 22 : 6) * iconScale;
+    const badgeY =
+      spriteTop - (st === "waiting" ? 22 : st === "ready" ? 6 : 14) * iconScale;
 
     if (spriteUrl) {
       const img = this.images.get(spriteUrl);
       if (img) {
-        const w = 28 * iconScale;
+        const w = 30 * iconScale * 2;
         const h = (img.height / img.width) * w;
-        ctx.drawImage(img, cx - w / 2, by - h / 2, w, h);
+        // Soft bob so the collect cue reads like the original game
+        const bob = Math.sin(performance.now() / 280) * 3.5;
+        ctx.drawImage(img, cx - w / 2, badgeY - h + bob, w, h);
       }
     } else if (label) {
       const r = 10 * iconScale;
       ctx.beginPath();
-      ctx.arc(cx, by, r, 0, Math.PI * 2);
+      ctx.arc(cx, badgeY, r, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
       ctx.strokeStyle = "rgba(0,0,0,0.35)";
@@ -304,7 +510,7 @@ export class Renderer {
       ctx.font = `bold ${11 * iconScale}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(label, cx, by + 0.5 * iconScale);
+      ctx.fillText(label, cx, badgeY + 0.5 * iconScale);
       ctx.textAlign = "start";
       ctx.textBaseline = "alphabetic";
     }
@@ -329,7 +535,7 @@ export class Renderer {
     const img = def.spriteUrl ? this.images.get(def.spriteUrl) : null;
     ctx.globalAlpha = alpha;
     if (img) {
-      ctx.drawImage(img, drawX, drawY);
+      ctx.drawImage(img, drawX, drawY, def.width, def.height);
     } else {
       // Placeholder block
       const colors = {
