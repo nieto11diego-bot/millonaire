@@ -535,6 +535,8 @@ export class Renderer {
     const img = def.spriteUrl ? this.images.get(def.spriteUrl) : null;
     ctx.globalAlpha = alpha;
     if (img) {
+      ctx.imageSmoothingEnabled = true;
+      if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
       ctx.drawImage(img, drawX, drawY, def.width, def.height);
     } else {
       // Placeholder block
@@ -543,6 +545,7 @@ export class Renderer {
         commercial: "#6a8aa8",
         decoration: "#8a9a5b",
         wonder: "#c4a35a",
+        service: "#c45c4a",
       };
       ctx.fillStyle = colors[def.category] || "#708090";
       ctx.fillRect(

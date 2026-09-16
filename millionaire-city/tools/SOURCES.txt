@@ -1,6 +1,0 @@
-﻿# Source paths (local machine)
-APK_EXTRACT=c:\Users\nieto\Desktop\Millonaire
-ASSETS=c:\Users\nieto\Desktop\Millonaire\assets
-DEX=c:\Users\nieto\Desktop\Millonaire\classes.dex
-ASSET_CATALOG=c:\Users\nieto\Downloads\Millionaire_City_asset_catalog
-JADX_JAR=c:\Users\nieto\Desktop\lib\jadx-gui-1.5.6-all.jar

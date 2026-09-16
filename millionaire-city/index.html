@@ -16,11 +16,17 @@
       <div id="building-tooltip" class="bldg-tip" hidden></div>
 
       <header class="hud-top">
-        <div class="xp-hud" title="Experiencia">
-          <div class="xp-star"><span id="level">1</span></div>
-          <div class="xp-track">
-            <div class="xp-fill" id="xp-fill"></div>
-            <span class="xp-label" id="xp">100</span>
+        <div class="hud-left">
+          <div class="xp-hud" title="Experiencia">
+            <div class="xp-star"><span id="level">1</span></div>
+            <div class="xp-track">
+              <div class="xp-fill" id="xp-fill"></div>
+              <span class="xp-label" id="xp">100</span>
+            </div>
+          </div>
+          <div class="happiness-hud" id="happiness-hud" title="Felicidad de la ciudad">
+            <span class="happiness-face" id="happiness-face" aria-hidden="true"></span>
+            <strong id="happiness-value">0%</strong>
           </div>
         </div>
         <div class="city-title">
@@ -49,6 +55,7 @@
           <div class="tabs">
             <button type="button" class="tab active" data-tab="houses">Casas</button>
             <button type="button" class="tab" data-tab="commerces">Comercios</button>
+            <button type="button" class="tab" data-tab="services">Servicios</button>
             <button type="button" class="tab" data-tab="decorations">Decoración</button>
             <button type="button" class="tab" data-tab="wonders">Maravillas</button>
             <button type="button" class="tab" data-tab="tools">Herramientas</button>
@@ -127,6 +134,22 @@
         <div class="expand-actions">
           <button type="button" id="expand-cancel" class="expand-btn expand-btn--ghost">Cancelar</button>
           <button type="button" id="expand-buy" class="expand-btn expand-btn--buy">Comprar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirm-panel" class="expand-panel" hidden>
+      <div class="expand-window" role="dialog" aria-labelledby="confirm-title" aria-describedby="confirm-ask">
+        <header class="expand-header">
+          <h2 id="confirm-title">Confirmar</h2>
+          <button type="button" id="confirm-close" class="missions-close" aria-label="Cerrar">×</button>
+        </header>
+        <p class="expand-copy" id="confirm-copy"></p>
+        <p class="expand-ask" id="confirm-ask">¿Quieres continuar?</p>
+        <p class="expand-price" id="confirm-detail"></p>
+        <div class="expand-actions">
+          <button type="button" id="confirm-cancel" class="expand-btn expand-btn--ghost">Cancelar</button>
+          <button type="button" id="confirm-ok" class="expand-btn expand-btn--buy">Confirmar</button>
         </div>
       </div>
     </div>

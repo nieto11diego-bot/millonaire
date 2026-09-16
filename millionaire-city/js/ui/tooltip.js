@@ -265,6 +265,16 @@ export class BuildingTooltip {
         </div>
         <div class="bldg-tip-footnote">${escapeHtml(size)} · Nivel ${escapeHtml(level)}</div>
       `;
+    } else if (def.category === "service") {
+      const bonus = def.happinessBonus != null ? String(def.happinessBonus) : "6";
+      extra = `
+        <div class="bldg-tip-status">Servicio público</div>
+        <div class="bldg-tip-tenants">
+          <span class="bldg-tip-tenants-label">Felicidad:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">+${escapeHtml(bonus)}</span></span>
+        </div>
+        <div class="bldg-tip-footnote">${escapeHtml(size)} · Nivel ${escapeHtml(level)}</div>
+      `;
     } else {
       const income = (def.incomeValue || 0).toLocaleString("en-US");
       const clients = String(def.maxClients ?? "—");

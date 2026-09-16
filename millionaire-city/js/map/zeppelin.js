@@ -1,15 +1,27 @@
 /**
- * Decorative zeppelin that flies across the map and respawns at a random position.
+ * Decorative zeppelins that fly across the map and respawn at random positions.
  */
-const SPRITE_URL = "assets/fx/zeppelin.png";
-const BANNER_TEXTS = ["Millionaire City", "¡Hazte rico!", "Fortuna", "¡Construye!", "gurgi"];
+
+const DEFAULT_BANNER_TEXTS = ["Millionaire City", "¡Hazte rico!", "Fortuna", "¡Construye!", "gurgi"];
+const FCB_BANNER_TEXTS = ["FCB", "Barça", "Més que un club", "Visca!", "Azulgrana"];
+const MADRID_BANNER_TEXTS = ["Real Madrid", "Hala Madrid", "RM", "¡Campeones!", "Blancos"];
 
 export class ZeppelinFlyer {
   /**
    * @param {{ cols: number, rows: number, tile: number }} grid
+   * @param {{
+   *   spriteUrl?: string,
+   *   bannerTexts?: string[],
+   *   drawW?: number,
+   *   drawH?: number,
+   *   initialDelayMs?: number,
+   *   lockDir?: -1 | 1,
+   * }} [options]
    */
-  constructor(grid) {
+  constructor(grid, options = {}) {
     this.grid = grid;
+    this.spriteUrl = options.spriteUrl || "assets/fx/zeppelin.png";
+    this.bannerTexts = options.bannerTexts || DEFAULT_BANNER_TEXTS;
     /** @type {HTMLImageElement|null} */
     this.img = null;
     this.active = false;
@@ -17,10 +29,12 @@ export class ZeppelinFlyer {
     this.y = 0;
     this.dir = 1;
     this.speed = 48;
-    this.waitMs = 800;
-    this.bannerText = BANNER_TEXTS[0];
-    this.drawW = 160;
-    this.drawH = 70;
+    this.waitMs = options.initialDelayMs ?? 800;
+    this.bannerText = this.bannerTexts[0];
+    this.drawW = options.drawW ?? 160;
+    this.drawH = options.drawH ?? 70;
+    /** When set, always fly this way so logos on the sprite stay readable (no FlipX). */
+    this.lockDir = options.lockDir ?? null;
   }
 
   async preload() {
@@ -31,7 +45,7 @@ export class ZeppelinFlyer {
         resolve();
       };
       img.onerror = () => resolve();
-      img.src = SPRITE_URL;
+      img.src = this.spriteUrl;
     });
   }
 
@@ -46,13 +60,13 @@ export class ZeppelinFlyer {
   /** Random side, height, speed and banner text. */
   spawn() {
     const margin = this.drawW + 120;
-    this.dir = Math.random() < 0.5 ? 1 : -1;
+    this.dir = this.lockDir ?? (Math.random() < 0.5 ? 1 : -1);
     const padY = 50;
     const maxY = Math.max(padY + 10, this.mapH - this.drawH - 40);
     this.y = padY + Math.random() * (maxY - padY);
     this.x = this.dir > 0 ? -margin : this.mapW + margin;
     this.speed = 36 + Math.random() * 40;
-    this.bannerText = BANNER_TEXTS[Math.floor(Math.random() * BANNER_TEXTS.length)];
+    this.bannerText = this.bannerTexts[Math.floor(Math.random() * this.bannerTexts.length)];
     this.active = true;
     this.waitMs = 0;
   }
@@ -73,7 +87,6 @@ export class ZeppelinFlyer {
       (this.dir > 0 && this.x > this.mapW + margin) || (this.dir < 0 && this.x < -margin);
     if (gone) {
       this.active = false;
-      // Random delay before next flyby
       this.waitMs = 3000 + Math.random() * 10000;
     }
   }
@@ -92,7 +105,6 @@ export class ZeppelinFlyer {
     ctx.save();
     ctx.translate(this.x, this.y);
 
-    // Banner trails behind the zeppelin (opposite of travel direction)
     const bannerW = 110;
     const bannerH = 28;
     const gap = 18;
@@ -130,7 +142,6 @@ export class ZeppelinFlyer {
     ctx.textBaseline = "middle";
     ctx.fillText(this.bannerText, bannerX + bannerW / 2, bannerY + bannerH / 2 + 0.5);
 
-    // Sprite faces left by default — flip when flying right
     if (this.img) {
       ctx.save();
       if (facingRight) {
@@ -150,3 +161,31 @@ export class ZeppelinFlyer {
     ctx.restore();
   }
 }
+
+/** Several independent zeppelins sharing the sky. */
+export class ZeppelinFleet {
+  /** @param {ZeppelinFlyer[]} flyers */
+  constructor(flyers) {
+    this.flyers = flyers;
+  }
+
+  async preload() {
+    await Promise.all(this.flyers.map((f) => f.preload()));
+  }
+
+  spawn() {
+    this.flyers.forEach((f) => f.spawn());
+  }
+
+  /** @param {number} dtMs */
+  update(dtMs) {
+    this.flyers.forEach((f) => f.update(dtMs));
+  }
+
+  /** @param {CanvasRenderingContext2D} ctx */
+  draw(ctx) {
+    this.flyers.forEach((f) => f.draw(ctx));
+  }
+}
+
+export { DEFAULT_BANNER_TEXTS, FCB_BANNER_TEXTS, MADRID_BANNER_TEXTS };

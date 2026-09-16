@@ -6,7 +6,7 @@ import { cashHtml, costHtml } from "./money.js";
 export class ShopUI {
   /**
    * @param {HTMLElement} root
-   * @param {{ houses: object[], commerces: object[], decorations: object[] }} catalog
+   * @param {{ houses: object[], commerces: object[], decorations: object[], wonders?: object[], services?: object[] }} catalog
    * @param {(item: object|null) => void} onSelect
    * @param {{
    *   roadCost?: number,
@@ -61,6 +61,9 @@ export class ShopUI {
       case "commerces":
         items = this.catalog.commerces || [];
         break;
+      case "services":
+        items = this.catalog.services || [];
+        break;
       case "decorations":
         items = this.catalog.decorations || [];
         break;
@@ -108,6 +111,9 @@ export class ShopUI {
           : Math.round((item.houseBonusScaled / 100) * 100) / 100;
       const infl = item.influenceRadiusTiles != null ? ` · infl. ${item.influenceRadiusTiles}` : "";
       return meta(`${size} · +${pct}%${infl}`);
+    }
+    if (item.happinessBonus != null) {
+      return meta(`${size} · felicidad +${item.happinessBonus}`);
     }
     return meta(size);
   }

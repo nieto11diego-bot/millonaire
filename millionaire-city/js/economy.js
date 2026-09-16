@@ -24,17 +24,28 @@ export const WONDER_PRODUCTION = {
 export const LOST_RENT_GRACE_FACTOR = 1;
 
 /**
- * Contract economy anchors (Tourists on bungalow group: $300 cost / $900 reward).
- * Scale mixes duration (soft power) + tier so longer/higher contracts pay more
- * while keeping reward ≈ 3× displayed cost on the base house group.
+ * Contract economy anchors (Tourists on bungalow group: cost from costBase×costMod).
+ * Rewards use profit % by tenant count — costs are not changed by this rule:
+ *   3–5 people → +50%  (income = cost × 1.5)
+ *   2 people   → +90%  (income = cost × 1.9)
+ *   1 person   → +130% (income = cost × 2.3)
+ * Scale still used only for stored costBase/incomeBase generation helpers.
  */
 export const CONTRACT_ECONOMY = {
   anchorCostBase: 120, // × costMod 250% → $300
-  anchorIncomeBase: 900, // × incomeMod 100% → $900
+  anchorIncomeBase: 180, // reference at +50% profit on costBase
   anchorDurationSec: 20,
   durationExponent: 0.45,
   tierStep: 0.22,
 };
+
+/** Profit % over signing cost, from contract tenant count. */
+export function contractProfitPercent(tenants) {
+  const n = Number(tenants) || 0;
+  if (n <= 1) return 130;
+  if (n === 2) return 90;
+  return 50; // 3, 4, 5+
+}
 
 /** Duration×tier scale relative to Tourists (1.0). */
 export function contractEconomyScale(contract) {
@@ -46,24 +57,30 @@ export function contractEconomyScale(contract) {
 }
 
 export function contractCostBase(contract) {
+  if (contract?.costBase != null) return Math.max(1, Math.round(contract.costBase));
   return Math.max(1, Math.round(CONTRACT_ECONOMY.anchorCostBase * contractEconomyScale(contract)));
 }
 
 export function contractIncomeBase(contract) {
-  return Math.max(1, Math.round(CONTRACT_ECONOMY.anchorIncomeBase * contractEconomyScale(contract)));
+  const cost = contractCostBase(contract);
+  const profit = contract?.profitPercent ?? contractProfitPercent(contract?.tenants);
+  return Math.max(1, Math.round((cost * (100 + profit)) / 100));
 }
 
 export function contractCost(contract, group) {
   return Math.floor((contractCostBase(contract) * group.costModifierPercent) / 100);
 }
 
-export function contractIncome(contract, group, influenceScaled) {
-  const base = Math.floor((contractIncomeBase(contract) * group.incomeModifierPercent) / 100);
-  return Math.floor((base * (influenceScaled + 10000)) / 10000);
+export function contractIncome(contract, group, influenceScaled, happiness = 50) {
+  const cost = contractCost(contract, group);
+  const profit = contract?.profitPercent ?? contractProfitPercent(contract?.tenants);
+  const base = Math.floor((cost * (100 + profit)) / 100);
+  const withInfl = Math.floor((base * (influenceScaled + 10000)) / 10000);
+  return applyHappinessToReward(withInfl, happiness);
 }
 
-export function contractTenants(group) {
-  return group.tenants;
+export function contractTenants(contract, _group) {
+  return contract?.tenants ?? 0;
 }
 
 export function contractDurationMs(contract) {
@@ -92,9 +109,85 @@ export function commerceDurationMs(def) {
   return (def.incomeTimeSec || 180) * 1000;
 }
 
-export function commercePayout(def, customers) {
-  // incomeValue is the per-customer tick base (inferred; commerce is not influence-scaled).
-  return (def.incomeValue || 0) * (customers || 0);
+export function commercePayout(def, customers, happiness = 50) {
+  const base = (def.incomeValue || 0) * (customers || 0);
+  return applyHappinessToReward(base, happiness);
+}
+
+/** City-wide happiness knobs (0–100). Starts at 0; reward mult by happiness tier. */
+export const HAPPINESS = {
+  base: 0,
+  serviceCap: 40,
+  decorationCap: 30,
+  wonderCap: 20,
+  roadCap: 10,
+};
+
+/**
+ * Global happiness from city composition.
+ * Empty city = 0%; grows gradually with services, decoration, wonders and roads.
+ * @param {object[]} buildings
+ * @param {object|null} [roads]
+ * @returns {{ happiness: number, multiplier: number, services: number, decorations: number, wonders: number, roads: number }}
+ */
+export function computeCityHappiness(buildings, roads = null) {
+  let serviceRaw = 0;
+  let decoRaw = 0;
+  let wonderRaw = 0;
+  let houses = 0;
+  let housesRoadOk = 0;
+
+  for (const b of buildings || []) {
+    const d = b.def;
+    if (!d) continue;
+    if (d.category === "service") {
+      serviceRaw += d.happinessBonus ?? 6;
+    } else if (d.category === "decoration" && d.houseBonusScaled) {
+      decoRaw += d.houseBonusScaled / 200;
+    } else if (d.category === "wonder" && d.cityBonusScaled) {
+      wonderRaw += d.cityBonusScaled / 200;
+    } else if (d.category === "house") {
+      houses += 1;
+      if (!needsRoad(d) || isRoadConnected(b, roads)) housesRoadOk += 1;
+    }
+  }
+
+  const services = Math.min(HAPPINESS.serviceCap, serviceRaw);
+  const decorations = Math.min(HAPPINESS.decorationCap, decoRaw);
+  const wonders = Math.min(HAPPINESS.wonderCap, wonderRaw);
+  const roadPts = houses > 0 ? (housesRoadOk / houses) * HAPPINESS.roadCap : 0;
+
+  const happiness = Math.max(
+    0,
+    Math.min(100, Math.round(HAPPINESS.base + services + decorations + wonders + roadPts))
+  );
+  return {
+    happiness,
+    multiplier: happinessMultiplier(happiness),
+    services: Math.round(services * 10) / 10,
+    decorations: Math.round(decorations * 10) / 10,
+    wonders: Math.round(wonders * 10) / 10,
+    roads: Math.round(roadPts * 10) / 10,
+  };
+}
+
+/**
+ * Reward multiplier by happiness tier:
+ * 0–25 → ×0.35 · 25–50 → ×0.50 · 50–75 → ×0.75 · 75–95 → ×1.2 · 95–100 → ×1.6
+ */
+export function happinessMultiplier(happiness) {
+  const h = Math.max(0, Math.min(100, Number(happiness) || 0));
+  if (h < 25) return 0.35;
+  if (h < 50) return 0.5;
+  if (h < 75) return 0.75;
+  if (h < 95) return 1.2;
+  return 1.6;
+}
+
+export function applyHappinessToReward(amount, happiness) {
+  const n = Math.max(0, Number(amount) || 0);
+  if (!n) return 0;
+  return Math.max(0, Math.floor(n * happinessMultiplier(happiness)));
 }
 
 export function wonderGoldIntervalMs(def) {

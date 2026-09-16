@@ -14,6 +14,7 @@ import {
   contractXp,
   computeHouseInfluence,
   computeCommerceCustomers,
+  computeCityHappiness,
   isRoadConnected,
   needsRoad,
   wonderGoldIntervalMs,
@@ -37,9 +38,20 @@ export class EconomySim {
     this.roads = roads;
     this.index = makeEconomyIndex(economy);
     this.onEvent = onEvent;
+    /** @type {{ happiness: number, multiplier: number, services: number, decorations: number, wonders: number, roads: number }} */
+    this.cityHappiness = computeCityHappiness([], roads);
+  }
+
+  get happiness() {
+    return this.cityHappiness?.happiness ?? 0;
+  }
+
+  get happinessMultiplier() {
+    return this.cityHappiness?.multiplier ?? 1;
   }
 
   recomputeAll() {
+    this.cityHappiness = computeCityHappiness(this.grid.buildings, this.roads);
     for (const b of this.grid.buildings) {
       if (!b.runtime) b.runtime = createRuntime(b.def);
       if (b.def.category === "house") {
@@ -121,7 +133,7 @@ export class EconomySim {
       rt.remainingMs = 0;
       rt.status = STATUS.READY;
       rt.customers = computeCommerceCustomers(b, this.grid.buildings);
-      rt.lastPayout = commercePayout(b.def, rt.customers);
+      rt.lastPayout = commercePayout(b.def, rt.customers, this.happiness);
       this.onEvent("commerce_ready", { building: b });
       return true;
     }
@@ -152,17 +164,21 @@ export class EconomySim {
   previewContracts(building) {
     const group = groupForHouse(building.def, this.index);
     const infl = building.runtime?.influence ?? 0;
+    const happy = this.happiness;
     const n = this.index.contracts.length;
-    return this.index.contracts.map((c) => ({
-      contract: c,
-      group,
-      cost: contractCost(c, group),
-      income: contractIncome(c, group, infl),
-      tenants: contractTenants(group),
-      xp: contractXp(c, n),
-      durationMs: contractDurationMs(c),
-      influence: infl,
-    }));
+    return this.index.contracts
+      .map((c) => ({
+        contract: c,
+        group,
+        cost: contractCost(c, group),
+        income: contractIncome(c, group, infl, happy),
+        tenants: contractTenants(c, group),
+        xp: contractXp(c, n),
+        durationMs: contractDurationMs(c),
+        influence: infl,
+        happiness: happy,
+      }))
+      .sort((a, b) => a.cost - b.cost || a.contract.id - b.contract.id);
   }
 
   canSign(building) {
@@ -194,8 +210,8 @@ export class EconomySim {
     if (cash < cost) return { ok: false, reason: "no_cash", cost };
 
     rt.influence = computeHouseInfluence(building, this.grid.buildings);
-    const income = contractIncome(contract, group, rt.influence);
-    const tenants = contractTenants(group);
+    const income = contractIncome(contract, group, rt.influence, this.happiness);
+    const tenants = contractTenants(contract, group);
     const durationMs = contractDurationMs(contract);
 
     rt.status = STATUS.WAITING;
@@ -207,7 +223,15 @@ export class EconomySim {
 
     this.recomputeAll();
     const xp = contractXp(contract, this.index.contracts.length);
-    this.onEvent("contract_signed", { building, contract, cost, xp, income, tenants });
+    this.onEvent("contract_signed", {
+      building,
+      contract,
+      cost,
+      xp,
+      income,
+      tenants,
+      happiness: this.happiness,
+    });
     return { ok: true, cost, xp, income, tenants };
   }
 
@@ -219,8 +243,12 @@ export class EconomySim {
     const rt = building.runtime;
     if (!rt || rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
-    const cash = rt.lastIncome || 0;
     const contract = this.index.contractById[rt.contractId];
+    const group = groupForHouse(building.def, this.index);
+    rt.influence = computeHouseInfluence(building, this.grid.buildings);
+    const cash = contract
+      ? contractIncome(contract, group, rt.influence, this.happiness)
+      : rt.lastIncome || 0;
     const xp = contract ? contractXp(contract, this.index.contracts.length) : 0;
 
     rt.status = STATUS.IDLE;
@@ -231,7 +259,7 @@ export class EconomySim {
     rt.lastIncome = 0;
 
     this.recomputeAll();
-    this.onEvent("rent_collected", { building, cash, xp });
+    this.onEvent("rent_collected", { building, cash, xp, happiness: this.happiness });
     return { ok: true, cash, xp };
   }
 
@@ -252,13 +280,18 @@ export class EconomySim {
     if (!rt || rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
     rt.customers = computeCommerceCustomers(building, this.grid.buildings);
-    const cash = commercePayout(building.def, rt.customers);
+    const cash = commercePayout(building.def, rt.customers, this.happiness);
     rt.lastPayout = cash;
     rt.status = STATUS.WAITING;
     rt.durationMs = commerceDurationMs(building.def);
     rt.remainingMs = rt.durationMs;
 
-    this.onEvent("commerce_collected", { building, cash, customers: rt.customers });
+    this.onEvent("commerce_collected", {
+      building,
+      cash,
+      customers: rt.customers,
+      happiness: this.happiness,
+    });
     return { ok: true, cash, customers: rt.customers };
   }
 

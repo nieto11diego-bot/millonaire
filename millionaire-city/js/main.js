@@ -4,20 +4,20 @@ import { Renderer } from "./map/renderer.js";
 import { RoadLayer } from "./map/roads.js";
 import { RiverLayer } from "./map/river.js";
 import { ExpansionLayer } from "./map/expansions.js";
-import { ZeppelinFlyer } from "./map/zeppelin.js";
+import { ZeppelinFlyer, ZeppelinFleet, FCB_BANNER_TEXTS, MADRID_BANNER_TEXTS } from "./map/zeppelin.js";
 import { ShopUI } from "./ui/shop.js";
 import { MissionTracker, companyValueFromGrid } from "./missions.js";
 import { MissionsUI } from "./ui/missions.js";
 import { ContractsUI } from "./ui/contracts.js";
 import { BuildingTooltip } from "./ui/tooltip.js";
 import { EconomySim } from "./sim.js";
-import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady } from "./economy.js";
-import { cashHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
+import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, happinessMultiplier } from "./economy.js";
+import { cashHtml, goldHtml, diamondHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
 
 const TILE = 32;
 const START_CASH = 50_000_000;
 const START_GOLD = 15;
-const START_DIAMONDS = 2;
+const START_DIAMONDS = 20;
 const GOLD_DROP_CHANCE = 1 / 13;
 const DIAMOND_DROP_CHANCE = 1 / 20;
 
@@ -38,6 +38,9 @@ const diamondsEl = document.getElementById("diamonds");
 const levelEl = document.getElementById("level");
 const xpEl = document.getElementById("xp");
 const xpFillEl = document.getElementById("xp-fill");
+const happinessHudEl = document.getElementById("happiness-hud");
+const happinessFillEl = document.getElementById("happiness-fill");
+const happinessValueEl = document.getElementById("happiness-value");
 const hintEl = document.getElementById("hint");
 const canvas = document.getElementById("map");
 
@@ -69,6 +72,19 @@ function refreshHud() {
   const { pct, label } = xpProgress(state.xp, state.level, levelThresholds);
   xpEl.textContent = label;
   if (xpFillEl) xpFillEl.style.width = `${pct}%`;
+
+  const happy = sim?.cityHappiness?.happiness ?? 0;
+  const mult = sim?.cityHappiness?.multiplier ?? happinessMultiplier(happy);
+  if (happinessFillEl) happinessFillEl.style.width = `${happy}%`;
+  if (happinessValueEl) happinessValueEl.textContent = `${happy}%`;
+  if (happinessHudEl) {
+    const mood = happy < 40 ? "sad" : happy < 70 ? "ok" : "happy";
+    happinessHudEl.dataset.mood = mood;
+    const parts = sim?.cityHappiness
+      ? `Servicios +${sim.cityHappiness.services} · Decoración +${sim.cityHappiness.decorations} · Maravillas +${sim.cityHappiness.wonders} · Calles +${sim.cityHappiness.roads}`
+      : "";
+    happinessHudEl.title = `Felicidad de la ciudad: ${happy}% (recompensas ×${mult.toFixed(2)})${parts ? `\n${parts}` : ""}`;
+  }
 }
 
 /** Independent rolls: gold 1/13, diamond 1/20 (can get both). */
@@ -108,8 +124,8 @@ function setMode(mode) {
     rendererRef.showGrid =
       (mode === "place" && !!state.selected) || mode === "move" || mode === "road";
   }
-  if (mode === "move") setHint("Clic en un edificio o decoración para moverlo (cuesta 1/10 del precio). Clic vacío cancela.");
-  else if (mode === "erase") setHint("Clic/arrastra: borra carretera o edificios (reembolso 50% del precio). Clic vacío cancela.");
+  if (mode === "move") setHint("Clic en un edificio o decoración para moverlo (cuesta 1/10 del precio). Te pedirá confirmación.");
+  else if (mode === "erase") setHint("Clic en carretera o edificio para borrarlo (reembolso 50%). Te pedirá confirmación.");
   else if (mode === "road") {
     setHint(
       state.roadKind === "zebra"
@@ -154,6 +170,7 @@ function syncMissionValues() {
 function initBuilding(building) {
   building.runtime = createRuntime(building.def);
   sim?.recomputeAll();
+  refreshHud();
 }
 
 async function main() {
@@ -167,7 +184,13 @@ async function main() {
   }
 
   const catalog = enrichCatalog(data.economy, data.buildings);
-  const allDefs = [...catalog.houses, ...catalog.commerces, ...catalog.decorations, ...catalog.wonders];
+  const allDefs = [
+    ...catalog.houses,
+    ...catalog.commerces,
+    ...catalog.decorations,
+    ...catalog.wonders,
+    ...(catalog.services || []),
+  ];
   const roadCost = data.roads.costCoins ?? 500;
   levelThresholds = data.economy.levelCurve?.thresholds || null;
 
@@ -190,7 +213,21 @@ async function main() {
   rendererRef = renderer;
   renderer.river = river;
   renderer.expansions = expansions;
-  const zeppelin = new ZeppelinFlyer(grid);
+  const zeppelin = new ZeppelinFleet([
+    new ZeppelinFlyer(grid),
+    new ZeppelinFlyer(grid, {
+      spriteUrl: "assets/fx/zeppelin_fcb.png",
+      bannerTexts: FCB_BANNER_TEXTS,
+      initialDelayMs: 4500,
+      lockDir: -1,
+    }),
+    new ZeppelinFlyer(grid, {
+      spriteUrl: "assets/fx/zeppelin_madrid.png",
+      bannerTexts: MADRID_BANNER_TEXTS,
+      initialDelayMs: 9000,
+      lockDir: -1,
+    }),
+  ]);
   renderer.zeppelin = zeppelin;
   await Promise.all([renderer.preload(allDefs), roads.preload(), zeppelin.preload()]);
   zeppelin.spawn();
@@ -317,11 +354,67 @@ async function main() {
     if (e.target === expandPanel) hideExpandBuy();
   });
 
+  const confirmPanel = document.getElementById("confirm-panel");
+  const confirmTitleEl = document.getElementById("confirm-title");
+  const confirmCopyEl = document.getElementById("confirm-copy");
+  const confirmAskEl = document.getElementById("confirm-ask");
+  const confirmDetailEl = document.getElementById("confirm-detail");
+  const confirmOkBtn = document.getElementById("confirm-ok");
+  /** @type {null | (() => void)} */
+  let pendingConfirm = null;
+
+  function hideConfirm() {
+    pendingConfirm = null;
+    confirmPanel.hidden = true;
+    confirmPanel.classList.remove("visible");
+    confirmPanel.classList.remove("confirm-panel--danger");
+  }
+
+  /**
+   * @param {{
+   *   title: string,
+   *   copy?: string,
+   *   ask?: string,
+   *   detailHtml?: string,
+   *   okLabel?: string,
+   *   danger?: boolean,
+   *   onConfirm: () => void,
+   * }} opts
+   */
+  function openConfirm(opts) {
+    hideExpandBuy();
+    pendingConfirm = opts.onConfirm;
+    confirmTitleEl.textContent = opts.title;
+    confirmCopyEl.textContent = opts.copy || "";
+    confirmCopyEl.hidden = !opts.copy;
+    confirmAskEl.textContent = opts.ask || "¿Quieres continuar?";
+    confirmDetailEl.innerHTML = opts.detailHtml || "";
+    confirmDetailEl.hidden = !opts.detailHtml;
+    confirmOkBtn.textContent = opts.okLabel || "Confirmar";
+    confirmPanel.classList.toggle("confirm-panel--danger", !!opts.danger);
+    confirmPanel.hidden = false;
+    requestAnimationFrame(() => confirmPanel.classList.add("visible"));
+  }
+
+  function runConfirm() {
+    const fn = pendingConfirm;
+    hideConfirm();
+    if (fn) fn();
+  }
+
+  document.getElementById("confirm-close").addEventListener("click", hideConfirm);
+  document.getElementById("confirm-cancel").addEventListener("click", hideConfirm);
+  confirmOkBtn.addEventListener("click", runConfirm);
+  confirmPanel.addEventListener("click", (e) => {
+    if (e.target === confirmPanel) hideConfirm();
+  });
+
   document.getElementById("btn-missions").addEventListener("click", () => missionsUi.toggle());
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" && e.code !== "Escape") return;
     e.preventDefault();
-    if (!expandPanel.hidden) hideExpandBuy();
+    if (!confirmPanel.hidden) hideConfirm();
+    else if (!expandPanel.hidden) hideExpandBuy();
     else if (contractsUi.open) contractsUi.hide();
     else if (missionsUi.open) missionsUi.hide();
     else clearActiveTool();
@@ -407,6 +500,7 @@ async function main() {
 
   function clearActiveTool() {
     moveDrag = null;
+    hideConfirm();
     renderer.hover = null;
     renderer.radiusFocus = null;
     shop.clearSelection();
@@ -431,6 +525,7 @@ async function main() {
   document.getElementById("btn-road").addEventListener("click", () => {
     shop.clearSelection();
     moveDrag = null;
+    hideConfirm();
     setShopOpen(false);
     state.roadKind = "road";
     shop.tool = state.mode === "road" ? null : "road";
@@ -440,12 +535,14 @@ async function main() {
   document.getElementById("btn-move").addEventListener("click", () => {
     shop.clearSelection();
     moveDrag = null;
+    hideConfirm();
     setShopOpen(false);
     setMode(state.mode === "move" ? "place" : "move");
   });
   document.getElementById("btn-erase").addEventListener("click", () => {
     shop.clearSelection();
     moveDrag = null;
+    hideConfirm();
     setShopOpen(false);
     setMode(state.mode === "erase" ? "place" : "erase");
   });
@@ -602,6 +699,66 @@ async function main() {
     return false;
   }
 
+  /** Preview info for erase confirmation (no mutation). */
+  function erasePreviewAt(tx, ty) {
+    if (roads.has(tx, ty)) {
+      const kind = roads.kindAt(tx, ty) === "zebra" ? "Paso de cebra" : "Carretera";
+      const refund = Math.floor(roadCost * 0.5);
+      return {
+        name: kind,
+        detailHtml: `Reembolso 50%: ${cashHtml(refund)}`,
+      };
+    }
+    const hit = grid.buildingAt(tx, ty);
+    if (!hit) return null;
+    const diamondPrice = hit.def.costDiamonds || 0;
+    const goldPrice = hit.def.costFortune || 0;
+    const cashPrice = hit.def.costCoins || 0;
+    let detailHtml;
+    if (diamondPrice > 0) detailHtml = `Reembolso 50%: ${diamondHtml(Math.floor(diamondPrice * 0.5))}`;
+    else if (goldPrice > 0) detailHtml = `Reembolso 50%: ${goldHtml(Math.floor(goldPrice * 0.5))}`;
+    else detailHtml = `Reembolso 50%: ${cashHtml(Math.floor(cashPrice * 0.5))}`;
+    return { name: hit.def.name, detailHtml };
+  }
+
+  function askMoveBuilding(hit, tx, ty) {
+    const cost = moveCostOf(hit.def);
+    const ox = tx - hit.tx;
+    const oy = ty - hit.ty;
+    openConfirm({
+      title: "Mover",
+      copy: `Vas a mover «${hit.def.name}». El coste se cobra al soltarlo en otra casilla.`,
+      ask: "¿Quieres moverlo?",
+      detailHtml: cost > 0 ? `Coste: ${cashHtml(cost)}` : "Coste: gratis (sin precio en efectivo)",
+      okLabel: "Mover",
+      onConfirm: () => {
+        moveDrag = { building: hit, ox, oy };
+        updateMoveHover(tx, ty);
+        tooltip.hide();
+        setHint(
+          `Moviendo ${hit.def.name}. Coste al soltar: $${cost.toLocaleString("en-US")}. Clic para soltar.`
+        );
+      },
+    });
+  }
+
+  function askEraseAt(tx, ty) {
+    const preview = erasePreviewAt(tx, ty);
+    if (!preview) return false;
+    openConfirm({
+      title: "Destruir",
+      copy: `Vas a destruir «${preview.name}». Esta acción no se puede deshacer.`,
+      ask: "¿Seguro que quieres destruirlo?",
+      detailHtml: preview.detailHtml,
+      okLabel: "Destruir",
+      danger: true,
+      onConfirm: () => {
+        eraseAt(tx, ty);
+      },
+    });
+    return true;
+  }
+
   function interactBuilding(building) {
     const action = sim.tapAction(building);
 
@@ -731,6 +888,7 @@ async function main() {
           }
           sim.recomputeAll();
           syncMissionValues();
+          refreshHud();
           setHint(
             sameSpot
               ? `Sin cambio: ${building.def.name}`
@@ -759,24 +917,16 @@ async function main() {
         startCamDrag(p);
         return;
       }
-      const cost = moveCostOf(hit.def);
-      moveDrag = { building: hit, ox: tx - hit.tx, oy: ty - hit.ty };
-      updateMoveHover(tx, ty);
-      tooltip.hide();
-      setHint(
-        `Moviendo ${hit.def.name}. Coste al soltar: $${cost.toLocaleString("en-US")}. Clic para soltar.`
-      );
+      askMoveBuilding(hit, tx, ty);
       return;
     }
 
     if (state.mode === "erase") {
-      const erased = eraseAt(tx, ty);
-      if (!erased) {
+      const asked = askEraseAt(tx, ty);
+      if (!asked) {
         clearActiveTool();
         startCamDrag(p);
-        return;
       }
-      paintDragging = true;
       return;
     }
 
@@ -887,11 +1037,6 @@ async function main() {
       if (key !== lastPaintKey) {
         lastPaintKey = key;
         paintRoadAt(tx, ty);
-      }
-    } else if (paintDragging && state.mode === "erase") {
-      if (key !== lastPaintKey) {
-        lastPaintKey = key;
-        eraseAt(tx, ty);
       }
     }
 

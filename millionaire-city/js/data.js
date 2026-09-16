@@ -17,7 +17,7 @@ export function spriteUrlFromFile(spriteFile) {
 }
 
 export function enrichCatalog(economy, buildings) {
-  const enrich = (item) => {
+  const enrich = (item, forcedCategory = null) => {
     const b = item.anm ? buildings[item.anm] : null;
     const spriteFile = item.spriteFile || (b && b.sprite_file) || null;
     const width = item.width || (b && b.width) || item.gridW * 32;
@@ -28,20 +28,22 @@ export function enrichCatalog(economy, buildings) {
       height,
       spriteUrl: spriteUrlFromFile(spriteFile),
       category:
-        item.clientRadiusTiles != null
+        forcedCategory ||
+        (item.clientRadiusTiles != null
           ? "commercial"
           : item.houseBonusScaled != null
             ? "decoration"
             : item.cityBonusScaled != null
               ? "wonder"
-              : "house",
+              : "house"),
     };
   };
 
   return {
-    houses: (economy.houses || []).map(enrich),
-    commerces: (economy.commerces || []).map(enrich),
-    decorations: (economy.decorations || []).map(enrich),
-    wonders: (economy.wonders || []).map(enrich),
+    houses: (economy.houses || []).map((item) => enrich(item)),
+    commerces: (economy.commerces || []).map((item) => enrich(item)),
+    decorations: (economy.decorations || []).map((item) => enrich(item)),
+    wonders: (economy.wonders || []).map((item) => enrich(item)),
+    services: (economy.services || []).map((item) => enrich(item, "service")),
   };
 }

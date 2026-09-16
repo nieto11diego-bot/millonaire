@@ -41,11 +41,12 @@ export class ContractsUI {
     if (this.titleEl) this.titleEl.textContent = building.def.name || "Casa";
     const infl = building.runtime?.influence ?? 0;
     const pct = Math.round((infl / 100) * 10) / 10;
+    const happy = previews[0]?.happiness ?? 0;
+    const hMult = 0.5 + happy / 100;
     if (this.metaEl) {
-      this.metaEl.textContent =
-        pct > 0
-          ? `Bonus de casa: +${pct}% (influencia ${infl})`
-          : "Sin bonus de decoración / maravillas";
+      const inflTxt =
+        pct > 0 ? `Bonus casa +${pct}%` : "Sin bonus de decoración local";
+      this.metaEl.textContent = `${inflTxt} · Felicidad ciudad ${happy}% (×${hMult.toFixed(2)})`;
     }
     this.render();
   }

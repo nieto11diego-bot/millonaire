@@ -103,7 +103,9 @@ export class Grid {
 export function spriteOrigin(def, tileX, tileY, TILE = 32) {
   const footprintW = def.gridW * TILE;
   const footprintH = def.gridH * TILE;
-  const drawX = tileX * TILE + (footprintW - def.width) / 2;
-  const drawY = tileY * TILE + footprintH - def.height;
+  const ox = def.spriteOffsetX || 0;
+  const oy = def.spriteOffsetY || 0;
+  const drawX = tileX * TILE + (footprintW - def.width) / 2 + ox;
+  const drawY = tileY * TILE + footprintH - def.height + oy;
   return { drawX, drawY };
 }
