@@ -5,6 +5,7 @@ import { RoadLayer } from "./map/roads.js";
 import { RiverLayer } from "./map/river.js";
 import { ExpansionLayer } from "./map/expansions.js";
 import { ZeppelinFlyer, ZeppelinFleet, FCB_BANNER_TEXTS, MADRID_BANNER_TEXTS } from "./map/zeppelin.js";
+import { FighterPair } from "./map/fighter.js";
 import { ShopUI } from "./ui/shop.js";
 import { MissionTracker, companyValueFromGrid } from "./missions.js";
 import { MissionsUI } from "./ui/missions.js";
@@ -13,10 +14,11 @@ import { BuildingTooltip } from "./ui/tooltip.js";
 import { EconomySim } from "./sim.js";
 import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, happinessMultiplier } from "./economy.js";
 import { cashHtml, goldHtml, diamondHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
+import { nextLevelReward, rewardsBetween, sumRewards } from "./levelRewards.js";
 
 const TILE = 32;
 const START_CASH = 50_000_000;
-const START_GOLD = 15;
+const START_GOLD = 50;
 const START_DIAMONDS = 20;
 const GOLD_DROP_CHANCE = 1 / 13;
 const DIAMOND_DROP_CHANCE = 1 / 20;
@@ -27,7 +29,7 @@ const state = {
   diamonds: START_DIAMONDS,
   level: 1,
   xp: 100,
-  mode: "place", // place | move | erase | road
+  mode: "pan", // pan (puntero) | place | move | erase | road
   roadKind: "road", // road | zebra
   selected: null,
 };
@@ -38,6 +40,9 @@ const diamondsEl = document.getElementById("diamonds");
 const levelEl = document.getElementById("level");
 const xpEl = document.getElementById("xp");
 const xpFillEl = document.getElementById("xp-fill");
+const xpHudEl = document.getElementById("xp-hud");
+const levelRewardTipEl = document.getElementById("level-reward-tip");
+const levelRewardTipBodyEl = document.getElementById("level-reward-tip-body");
 const happinessHudEl = document.getElementById("happiness-hud");
 const happinessFillEl = document.getElementById("happiness-fill");
 const happinessValueEl = document.getElementById("happiness-value");
@@ -114,9 +119,13 @@ function setHint(text) {
 function setMode(mode) {
   state.mode = mode;
   canvas.classList.toggle("mode-place", mode === "place" && !!state.selected);
+  canvas.classList.toggle("mode-pan", mode === "pan");
   canvas.classList.toggle("mode-move", mode === "move");
   canvas.classList.toggle("mode-erase", mode === "erase");
   canvas.classList.toggle("mode-road", mode === "road");
+  const btnPan = document.getElementById("btn-pan");
+  btnPan?.classList.toggle("active", mode === "pan");
+  btnPan?.setAttribute("aria-pressed", mode === "pan" ? "true" : "false");
   document.getElementById("btn-move").classList.toggle("active", mode === "move");
   document.getElementById("btn-erase").classList.toggle("active", mode === "erase");
   document.getElementById("btn-road")?.classList.toggle("active", mode === "road");
@@ -124,17 +133,23 @@ function setMode(mode) {
     rendererRef.showGrid =
       (mode === "place" && !!state.selected) || mode === "move" || mode === "road";
   }
-  if (mode === "move") setHint("Clic en un edificio o decoración para moverlo (cuesta 1/10 del precio). Te pedirá confirmación.");
-  else if (mode === "erase") setHint("Clic en carretera o edificio para borrarlo (reembolso 50%). Te pedirá confirmación.");
-  else if (mode === "road") {
+  if (mode === "pan") {
+    setHint("Puntero: toca para seleccionar o cobrar. Arrastra para mover la cámara.");
+  } else if (mode === "move") {
+    setHint("Clic en un edificio o decoración para moverlo (cuesta 1/10 del precio). Te pedirá confirmación.");
+  } else if (mode === "erase") {
+    setHint("Clic en carretera o edificio para borrarlo (reembolso 50%). Te pedirá confirmación.");
+  } else if (mode === "road") {
     setHint(
       state.roadKind === "zebra"
         ? "Pinta pasos de cebra (mismo coste que carretera). Clic vacío cancela."
         : "Pinta carreteras: recta por defecto; curva/T/cruce según vecinos. Clic vacío cancela."
     );
+  } else if (state.selected) {
+    setHint(`Colocando: ${state.selected.name}. Clic en el mapa.`);
+  } else {
+    setHint("Arrastra para mover la cámara. Toca una casa para contrato, o un edificio con $ para cobrar.");
   }
-  else if (state.selected) setHint(`Colocando: ${state.selected.name}. Clic en el mapa.`);
-  else setHint("Arrastra para mover la cámara. Toca una casa para contrato, o un edificio con $ para cobrar.");
 }
 
 function levelFromXp(xp, thresholds) {
@@ -147,15 +162,64 @@ function levelFromXp(xp, thresholds) {
   return level;
 }
 
+function rewardHtml(reward) {
+  if (!reward) return "—";
+  if (reward.type === "cash") return cashHtml(reward.amount);
+  if (reward.type === "gold") return goldHtml(reward.amount);
+  return diamondHtml(reward.amount);
+}
+
+function applyLevelRewards(fromLevel, toLevel) {
+  const list = rewardsBetween(fromLevel, toLevel);
+  if (!list.length) return;
+  const totals = sumRewards(list);
+  if (totals.cash) state.cash += totals.cash;
+  if (totals.gold) state.gold += totals.gold;
+  if (totals.diamond) state.diamonds += totals.diamond;
+
+  const parts = [];
+  if (totals.cash) parts.push(`+$${formatCash(totals.cash)}`);
+  if (totals.gold) parts.push(`+${totals.gold} oro`);
+  if (totals.diamond) parts.push(`+${totals.diamond} diamante${totals.diamond === 1 ? "" : "s"}`);
+  const gained = toLevel - fromLevel;
+  const levelTxt = gained > 1 ? `niveles ${fromLevel + 1}–${toLevel}` : `nivel ${toLevel}`;
+  setHint(`¡Subiste al ${levelTxt}! Recompensa: ${parts.join(", ")}`);
+}
+
+function refreshLevelRewardTip() {
+  if (!levelRewardTipBodyEl) return;
+  const nextLv = state.level + 1;
+  const reward = nextLevelReward(state.level);
+  levelRewardTipBodyEl.innerHTML = `
+    <span class="lvl-tip-level">Nivel ${nextLv}</span>
+    ${rewardHtml(reward)}
+  `;
+}
+
+function showLevelRewardTip() {
+  refreshLevelRewardTip();
+  if (!levelRewardTipEl) return;
+  levelRewardTipEl.hidden = false;
+  requestAnimationFrame(() => levelRewardTipEl.classList.add("visible"));
+}
+
+function hideLevelRewardTip() {
+  if (!levelRewardTipEl) return;
+  levelRewardTipEl.classList.remove("visible");
+  levelRewardTipEl.hidden = true;
+}
+
 function applyXp(amount) {
   if (!amount) return;
   state.xp += amount;
   if (levelThresholds) {
     const next = levelFromXp(state.xp, levelThresholds);
     if (next > state.level) {
+      const prev = state.level;
       state.level = next;
       missions?.onLevelUp();
-      setHint(`¡Subiste al nivel ${state.level}!`);
+      applyLevelRewards(prev, next);
+      refreshLevelRewardTip();
     }
   }
   syncMissionValues();
@@ -194,8 +258,8 @@ async function main() {
   const roadCost = data.roads.costCoins ?? 500;
   levelThresholds = data.economy.levelCurve?.thresholds || null;
 
-  const MAP_COLS = 96; // 6 × 16
-  const MAP_ROWS = 80; // 5 × 16 → 30 equal parcels
+  const MAP_COLS = 80; // 5 × 16
+  const MAP_ROWS = 80; // 5 × 16 → 25 equal parcels
   const grid = new Grid(MAP_COLS, MAP_ROWS, TILE);
   gridRef = grid;
   const roads = new RoadLayer(grid.cols, grid.rows, data.roads);
@@ -205,7 +269,7 @@ async function main() {
     zoneW: expCfg.zoneW ?? 16,
     zoneH: expCfg.zoneH ?? 16,
     baseCost: expCfg.baseCost ?? 50_000,
-    costGrowth: expCfg.costGrowth ?? 1.4,
+    costGrowth: expCfg.costGrowth ?? 3,
   });
   grid.river = river;
   grid.expansions = expansions;
@@ -220,17 +284,22 @@ async function main() {
       bannerTexts: FCB_BANNER_TEXTS,
       initialDelayMs: 4500,
       lockDir: -1,
+      faction: "fcb",
     }),
     new ZeppelinFlyer(grid, {
       spriteUrl: "assets/fx/zeppelin_madrid.png",
       bannerTexts: MADRID_BANNER_TEXTS,
       initialDelayMs: 9000,
       lockDir: -1,
+      faction: "madrid",
     }),
   ]);
   renderer.zeppelin = zeppelin;
-  await Promise.all([renderer.preload(allDefs), roads.preload(), zeppelin.preload()]);
+  const fighters = new FighterPair(grid, { initialDelayMs: 3500 });
+  renderer.fighters = fighters;
+  await Promise.all([renderer.preload(allDefs), roads.preload(), zeppelin.preload(), fighters.preload()]);
   zeppelin.spawn();
+  fighters.spawn();
 
   // River always on the right edge, top → bottom
   river.generate({ marginRight: 5, bridgeEvery: 11 + Math.floor(Math.random() * 3) });
@@ -463,7 +532,7 @@ async function main() {
             : `Colocando: ${item.name} (${item.gridW}×${item.gridH}). Costo $${(item.costCoins || 0).toLocaleString("en-US")}`
         );
       } else if (state.mode === "place") {
-        setMode("place");
+        setMode("pan");
       }
     },
     {
@@ -476,7 +545,7 @@ async function main() {
           state.roadKind = "zebra";
           setMode("road");
         } else if (state.mode === "road") {
-          setMode("place");
+          setMode("pan");
         }
       },
       onHover: (item, screenPos) => {
@@ -504,7 +573,7 @@ async function main() {
     renderer.hover = null;
     renderer.radiusFocus = null;
     shop.clearSelection();
-    setMode("place");
+    setMode("pan");
   }
 
   btnShop.addEventListener("click", () => {
@@ -517,9 +586,17 @@ async function main() {
       if (state.mode === "move" || state.mode === "erase" || state.mode === "road") {
         moveDrag = null;
         renderer.hover = null;
-        setMode("place");
+        setMode(state.selected ? "place" : "pan");
       }
     }
+  });
+
+  document.getElementById("btn-pan").addEventListener("click", () => {
+    shop.clearSelection();
+    moveDrag = null;
+    hideConfirm();
+    setShopOpen(false);
+    setMode("pan");
   });
 
   document.getElementById("btn-road").addEventListener("click", () => {
@@ -529,7 +606,7 @@ async function main() {
     setShopOpen(false);
     state.roadKind = "road";
     shop.tool = state.mode === "road" ? null : "road";
-    setMode(state.mode === "road" ? "place" : "road");
+    setMode(state.mode === "road" ? "pan" : "road");
   });
 
   document.getElementById("btn-move").addEventListener("click", () => {
@@ -537,14 +614,14 @@ async function main() {
     moveDrag = null;
     hideConfirm();
     setShopOpen(false);
-    setMode(state.mode === "move" ? "place" : "move");
+    setMode(state.mode === "move" ? "pan" : "move");
   });
   document.getElementById("btn-erase").addEventListener("click", () => {
     shop.clearSelection();
     moveDrag = null;
     hideConfirm();
     setShopOpen(false);
-    setMode(state.mode === "erase" ? "place" : "erase");
+    setMode(state.mode === "erase" ? "pan" : "erase");
   });
 
   const zoomInput = document.getElementById("zoom");
@@ -785,6 +862,7 @@ async function main() {
       const drops = rollPremiumDrops();
       missions.onRentCollected();
       applyXp(result.xp || 0);
+      renderer.spawnCollectPopup(building, result.cash, result.xp || 0);
       syncMissionValues();
       refreshHud();
       setHint(
@@ -799,6 +877,8 @@ async function main() {
       state.cash += result.cash;
       const drops = rollPremiumDrops();
       missions.onCommerceCollected(building.def.objectId);
+      applyXp(result.xp || 0);
+      renderer.spawnCollectPopup(building, result.cash, result.xp || 0);
       syncMissionValues();
       refreshHud();
       setHint(
@@ -872,6 +952,24 @@ async function main() {
 
     const { tx, ty } = tileFromEvent(e);
     lastPaintKey = `${tx},${ty}`;
+
+    if (state.mode === "pan") {
+      // Pointer tool: select / interact, or pan if empty / drag
+      const zone = expansions.zoneAt(tx, ty);
+      if (zone && expansions.isBuyable(zone.zx, zone.zy)) {
+        openExpandBuy(zone.zx, zone.zy);
+        return;
+      }
+      const hit = grid.buildingAt(tx, ty);
+      if (hit) {
+        pendingInteract = hit;
+        lastX = p.x;
+        lastY = p.y;
+      } else {
+        startCamDrag(p);
+      }
+      return;
+    }
 
     // Drop while moving a building (invalid drop keeps it picked up)
     if (state.mode === "move" && moveDrag) {
@@ -1040,7 +1138,28 @@ async function main() {
       }
     }
 
-    if (state.mode === "road") {
+    if (state.mode === "pan" || (state.mode === "place" && !state.selected && !camDragging && !paintDragging)) {
+      renderer.hover = null;
+      const zone = expansions.zoneAt(tx, ty);
+      renderer.expandHover =
+        zone && expansions.isBuyable(zone.zx, zone.zy) ? { zx: zone.zx, zy: zone.zy } : null;
+      const hit = grid.buildingAt(tx, ty);
+      if (hit && hasInfluenceRadius(hit.def)) {
+        renderer.radiusFocus = { tx: hit.tx, ty: hit.ty, def: hit.def };
+      } else {
+        renderer.radiusFocus = null;
+      }
+      if (hit && (hit.def.category === "house" || hit.def.category === "commercial" || hit.def.category === "wonder")) {
+        const anchor = renderer.buildingAnchorScreen(hit);
+        tooltip.show(hit, { left: anchor.x, top: anchor.y });
+      } else if (renderer.expandHover) {
+        const cost = expansions.costFor(renderer.expandHover.zx, renderer.expandHover.zy);
+        setHint(`Expansión en venta: $${(cost || 0).toLocaleString("en-US")}. Toca para comprar.`);
+        tooltip.hide();
+      } else {
+        tooltip.hide();
+      }
+    } else if (state.mode === "road") {
       renderer.hover = {
         tx,
         ty,
@@ -1077,27 +1196,6 @@ async function main() {
       renderer.expandHover = null;
       renderer.radiusFocus = hasInfluenceRadius(def) ? { tx, ty, def } : null;
       tooltip.hide();
-    } else if (state.mode === "place" && !state.selected && !camDragging && !paintDragging) {
-      renderer.hover = null;
-      const zone = expansions.zoneAt(tx, ty);
-      renderer.expandHover =
-        zone && expansions.isBuyable(zone.zx, zone.zy) ? { zx: zone.zx, zy: zone.zy } : null;
-      const hit = grid.buildingAt(tx, ty);
-      if (hit && hasInfluenceRadius(hit.def)) {
-        renderer.radiusFocus = { tx: hit.tx, ty: hit.ty, def: hit.def };
-      } else {
-        renderer.radiusFocus = null;
-      }
-      if (hit && (hit.def.category === "house" || hit.def.category === "commercial" || hit.def.category === "wonder")) {
-        const anchor = renderer.buildingAnchorScreen(hit);
-        tooltip.show(hit, { left: anchor.x, top: anchor.y });
-      } else if (renderer.expandHover) {
-        const cost = expansions.costFor(renderer.expandHover.zx, renderer.expandHover.zy);
-        setHint(`Expansión en venta: $${(cost || 0).toLocaleString("en-US")}. Toca para comprar.`);
-        tooltip.hide();
-      } else {
-        tooltip.hide();
-      }
     } else {
       renderer.hover = null;
       renderer.expandHover = null;
@@ -1133,8 +1231,13 @@ async function main() {
 
   sim.recomputeAll();
   syncMissionValues();
+  refreshLevelRewardTip();
+  if (xpHudEl) {
+    xpHudEl.addEventListener("mouseenter", showLevelRewardTip);
+    xpHudEl.addEventListener("mouseleave", hideLevelRewardTip);
+  }
   refreshHud();
-  setMode("place");
+  setMode("pan");
 
   let lastTs = performance.now();
   function loop(ts) {
@@ -1142,6 +1245,8 @@ async function main() {
     lastTs = ts;
     sim.update(dt);
     zeppelin.update(dt);
+    fighters.update(dt);
+    renderer.floatingRewards.update(dt);
     // Keep tooltip timer live while hovering
     if (tooltip.building && !tooltip.root.hidden) {
       const anchor = renderer.buildingAnchorScreen(tooltip.building);

@@ -11,6 +11,7 @@ import {
   contractDurationMs,
   commerceDurationMs,
   commercePayout,
+  commerceCollectXp,
   contractXp,
   computeHouseInfluence,
   computeCommerceCustomers,
@@ -281,6 +282,7 @@ export class EconomySim {
 
     rt.customers = computeCommerceCustomers(building, this.grid.buildings);
     const cash = commercePayout(building.def, rt.customers, this.happiness);
+    const xp = commerceCollectXp(building.def, cash);
     rt.lastPayout = cash;
     rt.status = STATUS.WAITING;
     rt.durationMs = commerceDurationMs(building.def);
@@ -289,10 +291,11 @@ export class EconomySim {
     this.onEvent("commerce_collected", {
       building,
       cash,
+      xp,
       customers: rt.customers,
       happiness: this.happiness,
     });
-    return { ok: true, cash, customers: rt.customers };
+    return { ok: true, cash, xp, customers: rt.customers };
   }
 
   /**

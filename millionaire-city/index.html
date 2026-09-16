@@ -17,11 +17,16 @@
 
       <header class="hud-top">
         <div class="hud-left">
-          <div class="xp-hud" title="Experiencia">
+          <div class="xp-hud" id="xp-hud">
             <div class="xp-star"><span id="level">1</span></div>
             <div class="xp-track">
               <div class="xp-fill" id="xp-fill"></div>
               <span class="xp-label" id="xp">100</span>
+            </div>
+            <div class="level-reward-tip" id="level-reward-tip" hidden>
+              <div class="level-reward-tip-title">Próxima recompensa</div>
+              <div class="level-reward-tip-body" id="level-reward-tip-body"></div>
+              <div class="level-reward-tip-arrow" aria-hidden="true"></div>
             </div>
           </div>
           <div class="happiness-hud" id="happiness-hud" title="Felicidad de la ciudad">
@@ -39,7 +44,7 @@
           </div>
           <div class="money-row money-row--gold" title="Lingotes de oro">
             <img class="money-icon" src="assets/ui/icon_gold.svg" alt="" />
-            <strong id="gold">0</strong>
+            <strong id="gold">50</strong>
           </div>
           <div class="money-row money-row--diamond" title="Diamantes">
             <img class="money-icon money-icon--diamond" src="assets/ui/icon_diamond.svg" alt="" />
@@ -78,6 +83,9 @@
           </button>
           <button type="button" class="dock-btn" id="btn-shop" title="Tienda" aria-pressed="true">
             <span class="dock-glyph house" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="dock-btn active" id="btn-pan" title="Puntero: seleccionar y mover cámara" aria-pressed="true">
+            <img class="dock-glyph dock-glyph--img" src="assets/ui/icon_hand.png" alt="" />
           </button>
           <button type="button" class="dock-btn" id="btn-road" title="Carretera">
             <span class="dock-glyph road" aria-hidden="true"></span>

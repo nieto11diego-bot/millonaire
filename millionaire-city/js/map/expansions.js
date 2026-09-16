@@ -25,7 +25,7 @@ export class ExpansionLayer {
     this.zonesX = Math.floor(cols / this.zoneW);
     this.zonesY = Math.floor(rows / this.zoneH);
     this.baseCost = opts.baseCost ?? 50_000;
-    this.costGrowth = opts.costGrowth ?? 1.4;
+    this.costGrowth = opts.costGrowth ?? 3;
     /** @type {Set<string>} */
     this.owned = new Set();
     this.boughtCount = 0;

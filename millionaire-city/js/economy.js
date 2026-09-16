@@ -114,6 +114,11 @@ export function commercePayout(def, customers, happiness = 50) {
   return applyHappinessToReward(base, happiness);
 }
 
+/** XP granted when collecting commerce profit (matches original ~10:1 cash:xp). */
+export function commerceCollectXp(_def, cash) {
+  return Math.max(1, Math.round(cash / 10));
+}
+
 /** City-wide happiness knobs (0–100). Starts at 0; reward mult by happiness tier. */
 export const HAPPINESS = {
   base: 0,

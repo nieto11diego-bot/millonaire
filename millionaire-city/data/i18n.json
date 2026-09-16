@@ -152,7 +152,6 @@
                  "building.skyscraper_luxury":  180,
                  "building.gold_house":  181,
                  "building.hacienda":  182,
-                 "building.tiki":  183,
                  "building.pizzeria":  184,
                  "building.coffee_shop":  185,
                  "building.flower_shop":  186,
@@ -1480,13 +1479,6 @@
                                 "de":  "Hacienda",
                                 "it":  "Tenuta",
                                 "es":  "Hacienda"
-                            },
-                    "183":  {
-                                "en":  "Tiki",
-                                "fr":  "Hutte Tiki",
-                                "de":  "",
-                                "it":  "Tiki",
-                                "es":  "Tiki"
                             },
                     "184":  {
                                 "en":  "Pizzeria",

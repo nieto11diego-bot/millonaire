@@ -1,4 +1,5 @@
 import { spriteOrigin } from "./grid.js";
+import { FloatingRewards } from "./floatingRewards.js";
 
 /**
  * Canvas renderer: grass grid + buildings with Y-sort.
@@ -22,6 +23,8 @@ export class Renderer {
     this.radiusFocus = null;
     /** @type {import("./zeppelin.js").ZeppelinFlyer|null} */
     this.zeppelin = null;
+    /** @type {import("./fighter.js").FighterPair|null} */
+    this.fighters = null;
     /** @type {import("./river.js").RiverLayer|null} */
     this.river = null;
     /** @type {import("./expansions.js").ExpansionLayer|null} */
@@ -31,6 +34,7 @@ export class Renderer {
     this.grassPattern = null;
     /** @type {{ zx: number, zy: number } | null} */
     this.expandHover = null;
+    this.floatingRewards = new FloatingRewards();
     this._resize();
     window.addEventListener("resize", () => this._resize());
   }
@@ -129,6 +133,11 @@ export class Renderer {
       x: (wx - mapW / 2 - this.camera.x) * z + this.cssWidth / 2,
       y: (wy - mapH / 2 - this.camera.y) * z + this.cssHeight / 2,
     };
+  }
+
+  /** Show floating cash / XP popup above a building. */
+  spawnCollectPopup(building, cash, xp = 0) {
+    this.floatingRewards.spawn(building, this.grid.tile, { cash, xp });
   }
 
   /** Top-center of a building footprint in canvas CSS pixels. */
@@ -244,6 +253,8 @@ export class Renderer {
       this._drawStatus(b);
     }
 
+    this.floatingRewards.draw(ctx);
+
     // Ghost sprite on top (also when invalid, so relocate preview stays visible)
     if (this.hover && this.hover.def) {
       this._drawBuilding(this.hover.def, this.hover.tx, this.hover.ty, this.hover.valid ? 0.55 : 0.35);
@@ -251,6 +262,8 @@ export class Renderer {
 
     // Zeppelin flies above the city
     this.zeppelin?.draw(ctx);
+    // Combat jets above the city
+    this.fighters?.draw(ctx);
 
     ctx.restore();
   }
@@ -474,7 +487,6 @@ export class Renderer {
       label = "📋";
       color = "#6a8aa8";
     } else if (st === "ready") {
-      // Cash stack: house rent / commerce profit ready to collect
       spriteUrl = "assets/ui/icon_cash.png";
     } else if (st === "lost") {
       label = "!";
