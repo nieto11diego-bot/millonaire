@@ -1896,10 +1896,10 @@
                          "anm":  "ANM_SERVICE_FIRE_STATION_4X3",
                          "spriteFile":  "fire_station.png",
                          "confidence":  "custom",
-                         "width":  140,
-                         "height":  90,
+                         "width":  128,
+                         "height":  160,
                          "spriteOffsetX":  0,
-                         "spriteOffsetY":  4,
+                         "spriteOffsetY":  0,
                          "spriteConfidence":  "custom-photo"
                      },
                      {
@@ -1918,10 +1918,10 @@
                          "anm":  "ANM_SERVICE_POLICE_STATION_4X3",
                          "spriteFile":  "police_station.png",
                          "confidence":  "custom",
-                         "width":  140,
-                         "height":  90,
+                         "width":  128,
+                         "height":  160,
                          "spriteOffsetX":  0,
-                         "spriteOffsetY":  4,
+                         "spriteOffsetY":  0,
                          "spriteConfidence":  "custom-photo"
                      },
                      {
