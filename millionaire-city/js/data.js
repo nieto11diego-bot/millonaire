@@ -38,6 +38,5 @@ export function enrichCatalog(economy, buildings) {
     commerces: (economy.commerces || []).map((item) => enrich(item, "commercial")),
     decorations: (economy.decorations || []).map((item) => enrich(item, "decoration")),
     wonders: (economy.wonders || []).map((item) => enrich(item, "wonder")),
-    services: (economy.services || []).map((item) => enrich(item, "service")),
   };
 }

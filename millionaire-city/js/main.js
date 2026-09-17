@@ -264,7 +264,6 @@ async function main() {
     ...catalog.commerces,
     ...catalog.decorations,
     ...catalog.wonders,
-    ...(catalog.services || []),
   ];
   /** @type {Map<number, object>} */
   const defsByObjectId = new Map();

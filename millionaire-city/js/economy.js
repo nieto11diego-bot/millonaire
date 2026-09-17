@@ -3,7 +3,7 @@
  */
 
 export const STATUS = {
-  IDLE: "idle", // decorations / services
+  IDLE: "idle", // decorations
   WAITING: "waiting", // house/commerce timer running
   READY: "ready", // collect available
   BUILDING: "building", // under construction
@@ -179,7 +179,7 @@ export function houseRewardRatePerChunk(def) {
 }
 
 /** Global cash payout scale for houses and commerces (1 = full, 0.5 = half). */
-export const CASH_REWARD_SCALE = 0.5;
+export const CASH_REWARD_SCALE = 0.3;
 
 /** Full-occupancy cash before influence (override with def.rewardCash). */
 export function houseFullCycleReward(def) {

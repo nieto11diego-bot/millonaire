@@ -7,7 +7,7 @@ import { normalizedBuildCost } from "../economy.js";
 export class ShopUI {
   /**
    * @param {HTMLElement} root
-   * @param {{ houses: object[], commerces: object[], decorations: object[], wonders?: object[], services?: object[] }} catalog
+   * @param {{ houses: object[], commerces: object[], decorations: object[], wonders?: object[] }} catalog
    * @param {(item: object|null) => void} onSelect
    * @param {{
    *   onHover?: (item: object|null, screenPos?: { left: number, top: number }|null) => void,
@@ -68,9 +68,6 @@ export class ShopUI {
         break;
       case "commerces":
         items = this.catalog.commerces || [];
-        break;
-      case "services":
-        items = this.catalog.services || [];
         break;
       case "decorations":
         items = this.catalog.decorations || [];
