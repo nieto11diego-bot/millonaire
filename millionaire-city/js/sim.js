@@ -3,16 +3,15 @@ import {
   TIME_SCALE,
   createRuntime,
   makeEconomyIndex,
-  commerceDurationMs,
-  commercePayout,
-  commerceCollectXp,
   houseIncome,
   houseCollectXp,
   houseMaxPeople,
   houseRewardDurationMs,
   houseGrowthIntervalMs,
   computeHouseInfluence,
-  computeCommerceCustomers,
+  commerceCycleReward,
+  commerceCollectXp,
+  commerceRewardDurationMs,
   isRoadConnected,
   needsRoad,
   wonderGoldIntervalMs,
@@ -29,7 +28,7 @@ import {
 } from "./economy.js";
 
 /**
- * Simulation ticker for house population/rent + commerce income + wonder premiums.
+ * Simulation ticker for house rent + commerce income + wonder premiums.
  */
 export class EconomySim {
   /**
@@ -50,11 +49,6 @@ export class EconomySim {
         b.runtime.maxPeople = houseMaxPeople(b.def);
         b.runtime.growthIntervalMs = houseGrowthIntervalMs(b.def);
         if (b.runtime.people > b.runtime.maxPeople) b.runtime.people = b.runtime.maxPeople;
-      }
-    }
-    for (const b of this.grid.buildings) {
-      if (b.def.category === "commercial") {
-        b.runtime.customers = computeCommerceCustomers(b, this.grid.buildings);
       }
     }
   }
@@ -156,22 +150,20 @@ export class EconomySim {
 
   _tickCommerce(b, step, roadOk) {
     const rt = b.runtime;
-    if (rt.status === STATUS.BUILDING) return false;
+    if (!rt || rt.status === STATUS.BUILDING) return false;
     if (!roadOk) return false;
     if (rt.status === STATUS.READY) return false;
 
     if (rt.status !== STATUS.WAITING) {
       rt.status = STATUS.WAITING;
-      rt.remainingMs = rt.durationMs || commerceDurationMs(b.def);
+      rt.remainingMs = rt.durationMs || commerceRewardDurationMs(b.def);
     }
 
-    // No customers → timer still runs but payout will be 0; keep ticking for feedback.
     rt.remainingMs -= step;
     if (rt.remainingMs <= 0) {
       rt.remainingMs = 0;
       rt.status = STATUS.READY;
-      rt.customers = computeCommerceCustomers(b, this.grid.buildings);
-      rt.lastPayout = commercePayout(b.def, rt.customers);
+      rt.lastIncome = commerceCycleReward(b.def);
       this.onEvent("commerce_ready", { building: b });
       return true;
     }
@@ -224,26 +216,24 @@ export class EconomySim {
     return { ok: true, cash, xp };
   }
 
+  /**
+   * @returns {{ ok: boolean, cash?: number, xp?: number, reason?: string }}
+   */
   collectCommerce(building) {
     if (building.def.category !== "commercial") return { ok: false, reason: "no_shop" };
     const rt = building.runtime;
     if (!rt || rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
-    rt.customers = computeCommerceCustomers(building, this.grid.buildings);
-    const cash = commercePayout(building.def, rt.customers);
+    const cash = commerceCycleReward(building.def);
     const xp = commerceCollectXp(building.def, cash);
-    rt.lastPayout = cash;
+    const durationMs = commerceRewardDurationMs(building.def);
+    rt.lastIncome = cash;
     rt.status = STATUS.WAITING;
-    rt.durationMs = commerceDurationMs(building.def);
-    rt.remainingMs = rt.durationMs;
+    rt.durationMs = durationMs;
+    rt.remainingMs = durationMs;
 
-    this.onEvent("commerce_collected", {
-      building,
-      cash,
-      xp,
-      customers: rt.customers,
-    });
-    return { ok: true, cash, xp, customers: rt.customers };
+    this.onEvent("commerce_collected", { building, cash, xp });
+    return { ok: true, cash, xp };
   }
 
   /**

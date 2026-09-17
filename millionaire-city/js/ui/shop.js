@@ -88,8 +88,11 @@ export class ShopUI {
     const size = `${item.gridW}×${item.gridH}`;
     const costLabel = costHtml(item);
     const meta = (extra) => `${costLabel}<span class="shop-sub-meta">· ${extra}</span>`;
-    if (item.clientRadiusTiles != null) {
-      return meta(`${size} · radio ${item.clientRadiusTiles}`);
+    if (item.category === "commercial" && item.rewardSec != null) {
+      const sec = item.rewardSec;
+      const label =
+        sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.round(sec / 60)}m` : `${Math.round(sec / 3600)}h`;
+      return meta(`${size} · cada ${label}`);
     }
     if (item.cityBonusScaled != null || item.cityBonusPercentApprox != null) {
       const pct =

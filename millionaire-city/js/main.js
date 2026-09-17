@@ -296,8 +296,7 @@ async function main() {
       if (type === "rent_ready") {
         setHint(`Alquiler listo: ${payload.building.def.name}. Toca el edificio para cobrar.`);
       } else if (type === "commerce_ready") {
-        const n = payload.building.runtime?.customers || 0;
-        setHint(`${payload.building.def.name} listo (${n} clientes). Toca para cobrar.`);
+        setHint(`${payload.building.def.name} listo. Toca para cobrar.`);
       } else if (type === "wonder_gold_ready") {
         setHint(`${payload.building.def.name}: oro listo. Toca la maravilla para cobrar.`);
       } else if (type === "wonder_diamond_ready") {
@@ -655,9 +654,8 @@ async function main() {
   }
 
   function hasInfluenceRadius(def) {
-    const client = def.clientRadiusTiles;
     const infl = def.influenceRadiusTiles;
-    return (client != null && client >= 0) || (infl != null && infl >= 0);
+    return infl != null && infl >= 0;
   }
 
   function startCamDrag(p) {
@@ -835,6 +833,10 @@ async function main() {
     }
 
     if (action === "collect_commerce") {
+      if (needsRoad(building.def) && !isRoadConnected(building, roads)) {
+        setHint("Este comercio necesita carretera adyacente para cobrar.");
+        return;
+      }
       const result = sim.collectCommerce(building);
       if (!result.ok) return;
       state.cash += result.cash;
@@ -845,7 +847,7 @@ async function main() {
       syncMissionValues();
       refreshHud();
       setHint(
-        `Cobrado ${building.def.name}: +$${result.cash.toLocaleString("en-US")} (${result.customers} clientes)${drops.suffix}`
+        `Cobrado ${building.def.name}: +$${result.cash.toLocaleString("en-US")}${drops.suffix}`
       );
       return;
     }
@@ -870,7 +872,7 @@ async function main() {
       );
     } else if (building.def.category === "commercial" && building.runtime?.status === "waiting") {
       setHint(
-        `${building.def.name}: ${building.runtime.customers || 0} clientes · cobra en ${formatDuration(building.runtime.remainingMs / TIME_SCALE)}.`
+        `${building.def.name}: cobra en ${formatDuration(building.runtime.remainingMs / TIME_SCALE)}.`
       );
     } else if (isConstructing(building)) {
       const left = Math.max(0, (building.runtime.buildEndsAt || 0) - Date.now());

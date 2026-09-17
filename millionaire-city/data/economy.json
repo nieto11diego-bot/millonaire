@@ -1,4 +1,4 @@
-{
+﻿{
     "meta":  {
                  "source":  "Millionaire City DEAR MOD v1.0.55",
                  "objectsCatalog":  "resources/r5_0078.bin",
@@ -17,17 +17,13 @@
                                "formulas":  {
                                                 "contractCost":  "(contract.costBase * contractGroup.costModifierPercent) / 100",
                                                 "contractIncome":  "contractCost * (100 + profitPercent(tenants)) / 100 * (houseInfluence + 10000) / 10000",
-                                                "profitPercent":  "tenants<=1 -> 130%; tenants==2 -> 90%; tenants 3-5 -> 50%",
+                                                "profitPercent":  "tenants\u003c=1 -\u003e 130%; tenants==2 -\u003e 90%; tenants 3-5 -\u003e 50%",
                                                 "tenants":  "contract.tenants",
                                                 "durationMs":  "contract.durationSec * 1000",
                                                 "xp":  "contract.xp with tier bonus 5%-25%"
                                             },
                                "confidence":  "dex-verified"
                            },
-                  "commerce":  {
-                                   "description":  "Signed-contract houses inside clientRadiusTiles count as customers (capped by maxClients).",
-                                   "confidence":  "dex-verified"
-                               },
                   "houseBonus":  {
                                      "description":  "Decorations within influenceRadiusTiles add houseBonusScaled to house influence.",
                                      "scale":  "100 scaled units ~= 1%",
@@ -42,9 +38,14 @@
                                                      "diamondReward":  1
                                                  },
                                   "confidence":  "custom"
-                              }},
-                "levelCurve":  {
-                       "formula":  "XP(nivel) = base × factor^nivel",
+                              },
+                  "commerce":  {
+                                   "description":  "Commerces earn cash on a fixed rewardSec cycle. Payout scales with construction cost (same timer/collect loop as houses).",
+                                   "confidence":  "custom"
+                               }
+              },
+    "levelCurve":  {
+                       "formula":  "XP(nivel) = base Ã— factor^nivel",
                        "base":  100,
                        "factor":  2,
                        "maxLevel":  100,
@@ -150,7 +151,7 @@
                                           9007199254740991,
                                           9007199254740991,
                                           9007199254740991
-                                     ]
+                                      ]
                    },
     "contracts":  [
                       {
@@ -989,14 +990,10 @@
                           "costCoins":  60000,
                           "costFortune":  0,
                           "buildTimeSec":  30,
+                          "rewardSec":  10,
                           "anm":  "ANM_COMMERCE_PIZZA_3X3",
                           "spriteFile":  "resources/r1_0649.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  2,
-                          "maxClients":  70,
-                          "incomeValue":  40,
-                          "incomeTimeSec":  60,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  24,
                           "forSale":  -1,
                           "width":  102,
@@ -1016,14 +1013,10 @@
                           "costCoins":  100000,
                           "costFortune":  0,
                           "buildTimeSec":  90,
+                          "rewardSec":  60,
                           "anm":  "ANM_COMMERCE_COFFEE_3X3",
                           "spriteFile":  "resources/r1_0682.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  2,
-                          "maxClients":  128,
-                          "incomeValue":  45,
-                          "incomeTimeSec":  180,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  40,
                           "forSale":  -1,
                           "width":  105,
@@ -1043,14 +1036,10 @@
                           "costCoins":  250000,
                           "costFortune":  0,
                           "buildTimeSec":  300,
+                          "rewardSec":  300,
                           "anm":  "ANM_COMMERCE_FLOWERSHOP_3X3",
                           "spriteFile":  "resources/r1_0664.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  3,
-                          "maxClients":  175,
-                          "incomeValue":  50,
-                          "incomeTimeSec":  600,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  100,
                           "forSale":  -1,
                           "width":  105,
@@ -1070,19 +1059,16 @@
                           "costCoins":  2000000,
                           "costFortune":  0,
                           "buildTimeSec":  3600,
+                          "rewardSec":  1800,
                           "anm":  "ANM_COMMERCE_BOWLING_3X4",
                           "spriteFile":  "resources/r1_0663.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  4,
-                          "maxClients":  270,
-                          "incomeValue":  55,
-                          "incomeTimeSec":  7200,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  800,
                           "forSale":  -1,
                           "width":  132,
                           "height":  121,
-                          "spriteConfidence":  "dex-verified"
+                          "spriteConfidence":  "dex-verified",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  21,
@@ -1097,19 +1083,16 @@
                           "costCoins":  3000000,
                           "costFortune":  0,
                           "buildTimeSec":  7200,
+                          "rewardSec":  3600,
                           "anm":  "ANM_COMMERCE_JEWLLERY_3X4",
                           "spriteFile":  "resources/r1_0667.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  3,
-                          "maxClients":  260,
-                          "incomeValue":  60,
-                          "incomeTimeSec":  14400,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  1200,
                           "forSale":  -1,
                           "width":  134,
                           "height":  122,
-                          "spriteConfidence":  "dex-verified"
+                          "spriteConfidence":  "dex-verified",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  22,
@@ -1124,19 +1107,16 @@
                           "costCoins":  4000000,
                           "costFortune":  0,
                           "buildTimeSec":  16200,
+                          "rewardSec":  7200,
                           "anm":  "ANM_COMMERCE_NIGHTCLUB_3X4",
                           "spriteFile":  "resources/r1_0673.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  4,
-                          "maxClients":  290,
-                          "incomeValue":  65,
-                          "incomeTimeSec":  32400,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  1600,
                           "forSale":  -1,
                           "width":  136,
                           "height":  111,
-                          "spriteConfidence":  "dex-verified"
+                          "spriteConfidence":  "dex-verified",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  23,
@@ -1151,19 +1131,16 @@
                           "costCoins":  5000000,
                           "costFortune":  0,
                           "buildTimeSec":  21600,
+                          "rewardSec":  14400,
                           "anm":  "ANM_COMMERCE_SHOPPINGMALL_3X6",
                           "spriteFile":  "resources/r1_0669.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  5,
-                          "maxClients":  315,
-                          "incomeValue":  70,
-                          "incomeTimeSec":  43200,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  2000,
                           "forSale":  -1,
                           "width":  192,
                           "height":  122,
-                          "spriteConfidence":  "dex-verified"
+                          "spriteConfidence":  "dex-verified",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  24,
@@ -1178,19 +1155,16 @@
                           "costCoins":  6000000,
                           "costFortune":  0,
                           "buildTimeSec":  28800,
+                          "rewardSec":  21600,
                           "anm":  "ANM_COMMERCE_BANK_3X3",
                           "spriteFile":  "resources/r1_0651.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  4,
-                          "maxClients":  340,
-                          "incomeValue":  75,
-                          "incomeTimeSec":  57600,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  2400,
                           "forSale":  -1,
                           "width":  96,
                           "height":  119,
-                          "spriteConfidence":  "dex-verified"
+                          "spriteConfidence":  "dex-verified",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  25,
@@ -1205,19 +1179,16 @@
                           "costCoins":  0,
                           "costFortune":  200,
                           "buildTimeSec":  36000,
+                          "rewardSec":  43200,
                           "anm":  "ANM_COMMERCE_HOSPITAL_3X5",
                           "spriteFile":  "resources/r1_0644.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  5,
-                          "maxClients":  360,
-                          "incomeValue":  80,
-                          "incomeTimeSec":  72000,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  4000,
                           "forSale":  -1,
                           "width":  168,
                           "height":  103,
-                          "spriteConfidence":  "dex-verified"
+                          "spriteConfidence":  "dex-verified",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  26,
@@ -1231,21 +1202,18 @@
                           "gridH":  3,
                           "costCoins":  0,
                           "costFortune":  0,
-                          "costDiamonds":  30,
                           "buildTimeSec":  43200,
+                          "rewardSec":  86400,
                           "anm":  "ANM_COMMERCE_CASINO_3X5",
                           "spriteFile":  "resources/r1_0657.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  5,
-                          "maxClients":  360,
-                          "incomeValue":  85,
-                          "incomeTimeSec":  86400,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  6000,
                           "forSale":  -1,
                           "width":  171,
                           "height":  116,
-                          "spriteConfidence":  "dex-verified"
+                          "spriteConfidence":  "dex-verified",
+                          "costDiamonds":  30,
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  154,
@@ -1260,19 +1228,16 @@
                           "costCoins":  150000,
                           "costFortune":  0,
                           "buildTimeSec":  450,
+                          "rewardSec":  180,
                           "anm":  "ANM_R1_0461",
                           "spriteFile":  "resources/r5_0048.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  3,
-                          "maxClients":  128,
-                          "incomeValue":  50,
-                          "incomeTimeSec":  900,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  200,
                           "forSale":  -1,
                           "width":  107,
                           "height":  128,
-                          "spriteConfidence":  "descriptor-resolved"
+                          "spriteConfidence":  "descriptor-resolved",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  159,
@@ -1287,19 +1252,16 @@
                           "costCoins":  1000000,
                           "costFortune":  0,
                           "buildTimeSec":  1800,
+                          "rewardSec":  900,
                           "anm":  "ANM_R1_0486",
                           "spriteFile":  "resources/r5_0073.png",
                           "confidence":  "dex-verified",
-                          "clientRadiusTiles":  3,
-                          "maxClients":  175,
-                          "incomeValue":  53,
-                          "incomeTimeSec":  3600,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  700,
                           "forSale":  -1,
                           "width":  104,
                           "height":  136,
-                          "spriteConfidence":  "descriptor-resolved"
+                          "spriteConfidence":  "descriptor-resolved",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  224,
@@ -1314,25 +1276,22 @@
                           "costCoins":  500000,
                           "costFortune":  0,
                           "buildTimeSec":  900,
+                          "rewardSec":  600,
                           "anm":  "ANM_COMMERCE_CAMP_NOU_4X4",
                           "spriteFile":  "camp_nou.png",
                           "confidence":  "custom",
-                          "clientRadiusTiles":  7,
-                          "maxClients":  220,
-                          "incomeValue":  58,
-                          "incomeTimeSec":  1800,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  500,
                           "forSale":  -1,
                           "width":  256,
                           "height":  219,
-                          "spriteConfidence":  "custom-photo"
+                          "spriteConfidence":  "custom-photo",
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  225,
                           "constant":  "COMMERCE_SANTIAGO_BERNABEU",
                           "nameTid":  -1,
-                          "name":  "Santiago Bernabéu",
+                          "name":  "Santiago Bernab├®u",
                           "descTid":  -1,
                           "level":  12,
                           "exp":  1000,
@@ -1341,19 +1300,16 @@
                           "costCoins":  500000,
                           "costFortune":  0,
                           "buildTimeSec":  900,
+                          "rewardSec":  600,
                           "anm":  "ANM_COMMERCE_SANTIAGO_BERNABEU_4X4",
                           "spriteFile":  "santiago_bernabeu.png",
                           "confidence":  "custom",
-                          "clientRadiusTiles":  7,
-                          "maxClients":  220,
-                          "incomeValue":  58,
-                          "incomeTimeSec":  1800,
-                          "dailyBonus":  1,
                           "instantBuildFactor":  500,
                           "forSale":  -1,
                           "width":  256,
                           "height":  219,
-                          "spriteConfidence":  "custom-photo"
+                          "spriteConfidence":  "custom-photo",
+                          "rewardFactor":  0.5
                       }
                   ],
     "decorations":  [
@@ -1650,7 +1606,7 @@
                             "objectId":  210,
                             "constant":  "DECO_CYPRESS_SLIM",
                             "nameTid":  -1,
-                            "name":  "Ciprés",
+                            "name":  "CiprÃ©s",
                             "descTid":  -1,
                             "level":  2,
                             "exp":  6,
@@ -1950,7 +1906,7 @@
                          "objectId":  901,
                          "constant":  "SERVICE_POLICE_STATION",
                          "nameTid":  -1,
-                         "name":  "Policía",
+                         "name":  "PolicÃ­a",
                          "descTid":  -1,
                          "level":  1,
                          "exp":  24,
@@ -2009,13 +1965,32 @@
                          "spriteConfidence":  "custom-photo"
                      }
                  ],
-    "hq": {"objectId":38,"constant":"HQ","nameTid":-2,"name":"Headquarters","descTid":-2,"level":1,"exp":20,"gridW":4,"gridH":2,"costCoins":10000,"costFortune":0,"buildTimeSec":1,"anm":"ANM_HQ_02_2X4","spriteFile":"resources/r1_0655.png","width":128,"height":96,"spriteConfidence":"dex-verified","confidence":"dex-verified"},
-    "expansions": {
-      "zoneW": 16,
-      "zoneH": 16,
-      "zonesX": 5,
-      "zonesY": 5,
-      "baseCost": 50000,
-      "costGrowth": 3
-    }
+    "hq":  {
+               "objectId":  38,
+               "constant":  "HQ",
+               "nameTid":  -2,
+               "name":  "Headquarters",
+               "descTid":  -2,
+               "level":  1,
+               "exp":  20,
+               "gridW":  4,
+               "gridH":  2,
+               "costCoins":  10000,
+               "costFortune":  0,
+               "buildTimeSec":  1,
+               "anm":  "ANM_HQ_02_2X4",
+               "spriteFile":  "resources/r1_0655.png",
+               "width":  128,
+               "height":  96,
+               "spriteConfidence":  "dex-verified",
+               "confidence":  "dex-verified"
+           },
+    "expansions":  {
+                       "zoneW":  16,
+                       "zoneH":  16,
+                       "zonesX":  5,
+                       "zonesY":  5,
+                       "baseCost":  50000,
+                       "costGrowth":  3
+                   }
 }

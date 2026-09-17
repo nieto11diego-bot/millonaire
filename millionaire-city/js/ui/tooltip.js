@@ -1,5 +1,5 @@
 /**
- * Hover popup for houses and commerces (Millionaire City style).
+ * Hover popup for houses and wonders (Millionaire City style).
  */
 import {
   STATUS,
@@ -9,6 +9,9 @@ import {
   houseCollectXp,
   houseMaxPeople,
   houseRewardDurationMs,
+  commerceCycleReward,
+  commerceCollectXp,
+  commerceRewardDurationMs,
   wonderGoldRemainingMs,
   wonderDiamondRemainingMs,
   wonderGoldReady,
@@ -190,7 +193,7 @@ export class BuildingTooltip {
     const isShop = def.category === "commercial";
 
     const name = def.name || "Edificio";
-    const peopleLabel = isHouse ? "Población" : "Clientes";
+    const peopleLabel = isHouse ? "Población" : "Ciclo";
 
     let timeText = "—";
     let progressPct = 0;
@@ -249,18 +252,18 @@ export class BuildingTooltip {
         statusNote = pct > 0 ? `Bonus +${pct}%` : "";
       }
     } else if (isShop) {
-      peopleText = String(rt.customers ?? 0);
-      cashText = String(rt.lastPayout ?? def.incomeValue ?? 0);
+      const projected = commerceCycleReward(def);
+      cashText = String(rt.status === STATUS.READY ? rt.lastIncome || projected : projected);
+      xpText = String(commerceCollectXp(def, Number(cashText) || 0));
+      peopleText = formatDuration(commerceRewardDurationMs(def));
       if (rt.status === STATUS.WAITING && rt.durationMs > 0) {
         showTimer = true;
         timeText = formatTipTime(rt.remainingMs / TIME_SCALE);
         progressPct = Math.max(0, Math.min(100, (1 - rt.remainingMs / rt.durationMs) * 100));
-        cashText = String((def.incomeValue || 0) * (rt.customers || 0));
       } else if (rt.status === STATUS.READY) {
         showTimer = true;
         timeText = "¡Listo!";
         progressPct = 100;
-        cashText = String(rt.lastPayout ?? 0);
         statusNote = "Toca para cobrar";
       }
     }
@@ -395,9 +398,27 @@ export class BuildingTooltip {
         </div>
         <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
       `;
+    } else if (def.category === "commercial") {
+      const reward = formatDuration(commerceRewardDurationMs(def));
+      const cash = formatCash(commerceCycleReward(def));
+      extra = `
+        <div class="bldg-tip-status">Ingresos por ciclo</div>
+        <div class="bldg-tip-tenants">
+          <span class="bldg-tip-tenants-label">Cobro cada:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(reward)}</span></span>
+        </div>
+        <div class="bldg-tip-tenants">
+          <span class="bldg-tip-tenants-label">Ingreso:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(cash)}</span></span>
+        </div>
+        <div class="bldg-tip-tenants">
+          <span class="bldg-tip-tenants-label">Construcción:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
+        </div>
+        <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
+      `;
     } else {
       extra = `
-        <div class="bldg-tip-status">Comercio · genera ingresos</div>
         <div class="bldg-tip-tenants">
           <span class="bldg-tip-tenants-label">Construcción:</span>
           <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
@@ -566,7 +587,7 @@ export class BuildingTooltip {
             <span class="bldg-tip-tenants-label">${escapeHtml(m.peopleLabel)}:</span>
             <span class="bldg-tip-tenants-val">
               <span class="bldg-tip-tenants-num">${escapeHtml(m.peopleText)}</span>
-              <img src="${ICONS.people}" alt="" />
+              ${m.kind === "shop" ? "" : `<img src="${ICONS.people}" alt="" />`}
             </span>
           </div>
           ${

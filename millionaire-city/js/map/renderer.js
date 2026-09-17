@@ -1,5 +1,6 @@
 import { spriteOrigin } from "./grid.js";
 import { FloatingRewards } from "./floatingRewards.js";
+import { TIME_SCALE, formatDuration } from "../economy.js";
 
 /**
  * Canvas renderer: grass grid + buildings with Y-sort.
@@ -197,7 +198,7 @@ export class Renderer {
       if (valid) this._drawInfluenceRadius(tx, ty, def);
     }
 
-    // Hover influence for placed commerces / decorations
+    // Hover influence for placed decorations / wonders
     if (this.radiusFocus) {
       const { tx, ty, def } = this.radiusFocus;
       this._drawInfluenceRadius(tx, ty, def);
@@ -382,18 +383,13 @@ export class Renderer {
   }
 
   /**
-   * Commerce client radius / decoration influence radius.
+   * Decoration / wonder influence radius.
    * @param {number} tx
    * @param {number} ty
    * @param {object} def
    */
   _drawInfluenceRadius(tx, ty, def) {
-    const base =
-      def.clientRadiusTiles != null
-        ? def.clientRadiusTiles
-        : def.influenceRadiusTiles != null
-          ? def.influenceRadiusTiles
-          : null;
+    const base = def.influenceRadiusTiles != null ? def.influenceRadiusTiles : null;
     if (base == null || base < 0) return;
     const radiusTiles = base + Math.max(def.gridW, def.gridH) / 2;
 
@@ -402,18 +398,9 @@ export class Renderer {
     const cx = (tx + def.gridW / 2) * tile;
     const cy = (ty + def.gridH / 2) * tile;
     const r = radiusTiles * tile;
-    const isCommerce = def.clientRadiusTiles != null;
     const isWonder = def.category === "wonder" || def.cityBonusScaled != null;
-    const fill = isCommerce
-      ? "rgba(224,177,95,0.16)"
-      : isWonder
-        ? "rgba(212,168,72,0.16)"
-        : "rgba(138,154,91,0.18)";
-    const stroke = isCommerce
-      ? "rgba(224,177,95,0.9)"
-      : isWonder
-        ? "rgba(196,140,40,0.95)"
-        : "rgba(138,154,91,0.95)";
+    const fill = isWonder ? "rgba(212,168,72,0.16)" : "rgba(138,154,91,0.18)";
+    const stroke = isWonder ? "rgba(196,140,40,0.95)" : "rgba(138,154,91,0.95)";
 
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -436,24 +423,19 @@ export class Renderer {
     const { drawY: spriteTop } = spriteOrigin(b.def, b.tx, b.ty, tile);
     const st = rt.status;
 
-    // Construction progress (houses / commerces / wonders)
+    // Construction progress (houses / wonders)
     if (st === "building" && rt.buildDurationMs > 0) {
       const left = Math.max(0, (rt.buildEndsAt || 0) - Date.now());
       const pct = 1 - left / rt.buildDurationMs;
-      const bw = Math.max(28, b.def.gridW * tile * 0.75);
-      const bh = 6;
+      const bw = Math.max(72, b.def.gridW * tile * 0.95);
+      const bh = 16;
       const bx = cx - bw / 2;
-      const by = spriteTop - 12;
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-      ctx.fillStyle = "#1a2329";
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.fillStyle = "#f0c14a";
-      ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, pct)), bh);
+      const by = spriteTop - 22;
+      this._drawTimedBar(bx, by, bw, bh, pct, "#f0c14a", formatDuration(left));
 
       const r = 11;
       ctx.beginPath();
-      ctx.arc(cx, by - 14, r, 0, Math.PI * 2);
+      ctx.arc(cx, by - 16, r, 0, Math.PI * 2);
       ctx.fillStyle = "#c4a35a";
       ctx.fill();
       ctx.strokeStyle = "rgba(0,0,0,0.35)";
@@ -463,7 +445,7 @@ export class Renderer {
       ctx.font = "bold 12px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("🔨", cx, by - 13.5);
+      ctx.fillText("🔨", cx, by - 15.5);
       ctx.textAlign = "start";
       ctx.textBaseline = "alphabetic";
       return;
@@ -499,90 +481,76 @@ export class Renderer {
       return;
     }
 
-    // Progress bar while waiting
+    // Progress bar while waiting (rent reward timer)
     if (st === "waiting" && rt.durationMs > 0) {
+      const leftMs = Math.max(0, rt.remainingMs) / TIME_SCALE;
       const pct = 1 - Math.max(0, rt.remainingMs) / rt.durationMs;
-      const bw = Math.max(24, b.def.gridW * tile * 0.7);
-      const bh = 5;
+      const bw = Math.max(72, b.def.gridW * tile * 0.95);
+      const bh = 16;
       const bx = cx - bw / 2;
-      const by = spriteTop - 10;
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-      ctx.fillStyle = "#1a2329";
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.fillStyle = b.def.category === "commercial" ? "#e0b15f" : "#3db89a";
-      ctx.fillRect(bx, by, bw * pct, bh);
+      const by = spriteTop - 20;
+      this._drawTimedBar(bx, by, bw, bh, pct, "#3db89a", formatDuration(leftMs));
     }
 
-    // Status badge
-    let label = null;
-    let color = "#3db89a";
-    let spriteUrl = null;
-    if (st === "ready") {
-      spriteUrl = "assets/ui/icon_cash.png";
-    } else if (st === "waiting" && b.def.category === "commercial" && (rt.customers || 0) === 0) {
-      label = "0";
-      color = "#9ab0b8";
-    }
+    // Collect cue when rent is ready
+    if (st !== "ready") return;
 
     const iconScale = 1.4;
-    const badgeY =
-      spriteTop - (st === "waiting" ? 22 : st === "ready" ? 6 : 14) * iconScale;
-
-    if (spriteUrl) {
-      const img = this.images.get(spriteUrl);
-      if (img) {
-        // Collect cue (cash wad) — slightly smaller so it doesn't dwarf the building
-        const w = 30 * iconScale * 1.55;
-        const h = (img.height / img.width) * w;
-        // Soft bob so the collect cue reads like the original game
-        const t = performance.now() / 280;
-        const bob = Math.sin(t) * 3.5;
-        const x = cx - w / 2;
-        const y = badgeY - h + bob;
-        // Golden glowing border (outer soft glow + crisp rim)
-        const pulse = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t));
-        ctx.save();
-        ctx.shadowColor = `rgba(255, 220, 70, ${0.85 * pulse})`;
-        ctx.shadowBlur = 14 + 6 * pulse;
-        ctx.drawImage(img, x, y, w, h);
-        ctx.shadowBlur = 4;
-        ctx.shadowColor = `rgba(255, 245, 180, ${0.95 * pulse})`;
-        ctx.drawImage(img, x, y, w, h);
-        ctx.restore();
-        ctx.drawImage(img, x, y, w, h);
-      }
-    } else if (label) {
-      const r = 10 * iconScale;
-      const fontPx = 11 * iconScale;
-      ctx.beginPath();
-      ctx.arc(cx, badgeY, r, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      ctx.lineWidth = 1 * iconScale;
-      ctx.stroke();
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold ${fontPx}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(label, cx, badgeY + 0.5 * iconScale);
-      ctx.textAlign = "start";
-      ctx.textBaseline = "alphabetic";
+    const badgeY = spriteTop - 6 * iconScale;
+    const spriteUrl = "assets/ui/icon_cash.png";
+    const img = this.images.get(spriteUrl);
+    if (img) {
+      const w = 30 * iconScale * 1.55;
+      const h = (img.height / img.width) * w;
+      const t = performance.now() / 280;
+      const bob = Math.sin(t) * 3.5;
+      const x = cx - w / 2;
+      const y = badgeY - h + bob;
+      const pulse = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t));
+      ctx.save();
+      ctx.shadowColor = `rgba(255, 220, 70, ${0.85 * pulse})`;
+      ctx.shadowBlur = 14 + 6 * pulse;
+      ctx.drawImage(img, x, y, w, h);
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = `rgba(255, 245, 180, ${0.95 * pulse})`;
+      ctx.drawImage(img, x, y, w, h);
+      ctx.restore();
+      ctx.drawImage(img, x, y, w, h);
     }
+  }
 
-    // Customer count on commerces
-    if (b.def.category === "commercial" && (rt.customers || 0) > 0) {
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.font = "10px sans-serif";
-      const text = `${rt.customers}👤`;
-      const tw = ctx.measureText(text).width;
-      const tx = cx - tw / 2 - 3;
-      const ty = (b.ty + b.def.gridH) * tile + 2;
-      ctx.fillRect(tx, ty, tw + 6, 12);
-      ctx.fillStyle = "#e0b15f";
-      ctx.fillText(text, tx + 3, ty + 10);
-    }
+  /**
+   * Wider timer bar with remaining-time label centered inside.
+   * @param {number} bx
+   * @param {number} by
+   * @param {number} bw
+   * @param {number} bh
+   * @param {number} pct 0..1
+   * @param {string} fillColor
+   * @param {string} label
+   */
+  _drawTimedBar(bx, by, bw, bh, pct, fillColor, label) {
+    const ctx = this.ctx;
+    const p = Math.max(0, Math.min(1, pct));
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(bx - 1.5, by - 1.5, bw + 3, bh + 3);
+    ctx.fillStyle = "#1a2329";
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(bx, by, bw * p, bh);
+
+    ctx.font = `bold ${Math.max(10, Math.min(13, bh - 3))}px "Segoe UI", system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const tx = bx + bw / 2;
+    const ty = by + bh / 2 + 0.5;
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "rgba(0,0,0,0.75)";
+    ctx.strokeText(label, tx, ty);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, tx, ty);
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
   }
 
   _drawBuilding(def, tx, ty, alpha) {

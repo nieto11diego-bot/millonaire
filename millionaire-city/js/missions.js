@@ -32,9 +32,7 @@ const BUILD_TRIGGERS = {
   160: [17],
 };
 
-const COMMERCE_UNIQUE_IDS = new Set([17, 18, 19, 20, 21, 22, 23, 24, 25, 26]);
 const WONDER_UNIQUE_IDS = new Set([34, 35, 36, 152, 160]);
-const COMMERCE_UNIQUE_TARGET = 5;
 const WONDER_UNIQUE_TARGET = 3;
 
 /** Cash / company-value style missions (amount counter flips to 1 when condition met). */
@@ -56,7 +54,6 @@ export class MissionTracker {
     this.counted = Object.fromEntries(this.missions.map((m) => [m.sku, 0]));
     this.completed = Object.fromEntries(this.missions.map((m) => [m.sku, false]));
     this.collected = Object.fromEntries(this.missions.map((m) => [m.sku, false]));
-    this.uniqueCommerces = [];
     this.uniqueWonders = [];
     this._listeners = [];
   }
@@ -217,19 +214,9 @@ export class MissionTracker {
       for (const sku of skus) this.improve(sku);
     }
 
-    if (COMMERCE_UNIQUE_IDS.has(oid)) {
-      this._noteUniqueCommerce(oid);
-    }
     if (WONDER_UNIQUE_IDS.has(oid)) {
       this._noteUniqueWonder(oid);
     }
-  }
-
-  _noteUniqueCommerce(oid) {
-    // Original also tracked sku 9 (diversify) which is absent from this build's DATA.
-    if (this.uniqueCommerces.includes(oid)) return;
-    if (this.uniqueCommerces.length >= COMMERCE_UNIQUE_TARGET) return;
-    this.uniqueCommerces.push(oid);
   }
 
   _noteUniqueWonder(oid) {
@@ -242,7 +229,7 @@ export class MissionTracker {
   }
 
   /**
-   * Re-evaluate cash / company-value / customers / house-bonus missions.
+   * Re-evaluate cash / company-value / house-bonus missions.
    * @param {number} cash
    * @param {number} companyValue
    * @param {object} [grid]
@@ -265,30 +252,11 @@ export class MissionTracker {
   }
 
   /**
-   * Customer + house-bonus missions (condition holds the real threshold).
+   * House-bonus + population missions (condition holds the real threshold).
    * @param {{ buildings: object[] }} grid
    */
   syncEconomyMissions(grid) {
     if (!grid?.buildings) return;
-
-    // Customer missions: best matching commerce of the required type
-    const customerSkus = [
-      { sku: 18, objectId: 17 }, // pizzeria 3
-      { sku: 19, objectId: 17 }, // pizzeria 10
-      { sku: 20, objectId: 17 }, // pizzeria 16
-      { sku: 21, objectId: 18 }, // coffee 12
-    ];
-    for (const { sku, objectId } of customerSkus) {
-      const m = this.bySku.get(sku);
-      if (!m || this.isCompleted(sku) || !this.isUnlocked(sku)) continue;
-      const need = m.target?.condition ?? 0;
-      let best = 0;
-      for (const b of grid.buildings) {
-        if (b.def?.objectId !== objectId) continue;
-        best = Math.max(best, b.runtime?.customers || 0);
-      }
-      if (need > 0 && best >= need) this.improve(sku);
-    }
 
     // House bonus % missions — best house of each type
     const bonusSkus = [
@@ -333,7 +301,7 @@ export class MissionTracker {
 
   onCommerceCollected(objectId) {
     if (objectId === 17) this.improve(28); // pizzeria
-    if (objectId === 18) this.improve(29); // coffee (sku 29 amount=50)
+    if (objectId === 18) this.improve(29); // coffee
   }
 
   /**
@@ -389,7 +357,6 @@ function isTrackableNow(m) {
     metric === "population_total" ||
     metric === "rents_collected" ||
     metric === "commerce_collects" ||
-    metric === "customers" ||
     metric === "house_bonus_percent"
   ) {
     return true;

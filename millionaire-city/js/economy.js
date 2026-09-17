@@ -223,17 +223,67 @@ export function makeHouseRuntime(def, people = null) {
   };
 }
 
-export function commerceDurationMs(def) {
-  return (def.incomeTimeSec || 180) * 1000;
+/**
+ * Commerce income: same timer/collect loop as houses, but payout scales with
+ * construction cost (cash + gold/diamond equivalent).
+ *
+ *   reward ≈ (rewardSec / 10) × $200 × (buildCost / $50_000)
+ *   → a $50k shop on a 10s cycle pays ~$200, like a bungalow chunk.
+ */
+export const COMMERCE_REWARD = {
+  chunkSec: 10,
+  basePerChunk: 200,
+  refCost: 50_000,
+  minCash: 10,
+};
+
+/** Fallback duration ladder when rewardSec is missing (level-scaled). */
+export const COMMERCE_REWARD_TIME = {
+  minSec: 10,
+  maxSec: 24 * 3600,
+  minLevel: 1,
+  maxLevel: 32,
+};
+
+export function commerceRewardDurationMs(def) {
+  if (def?.rewardSec != null) return Math.max(1, def.rewardSec) * 1000;
+  const { minSec, maxSec, minLevel, maxLevel } = COMMERCE_REWARD_TIME;
+  const lvl = Math.max(minLevel, Math.min(maxLevel, def?.level || 1));
+  const t = (lvl - minLevel) / Math.max(1, maxLevel - minLevel);
+  return Math.round(minSec * Math.pow(maxSec / minSec, t)) * 1000;
 }
 
-export function commercePayout(def, customers) {
-  return (def.incomeValue || 0) * (customers || 0);
+export function commerceRewardRatePerChunk(def) {
+  const cost = Math.max(1, normalizedBuildCost(def));
+  return Math.max(
+    1,
+    Math.round(COMMERCE_REWARD.basePerChunk * (cost / COMMERCE_REWARD.refCost))
+  );
 }
 
-/** XP granted when collecting commerce profit (matches original ~10:1 cash:xp). */
+/** Cash granted when collecting a finished commerce cycle. */
+export function commerceCycleReward(def) {
+  if (def?.rewardCash != null) return Math.max(0, Math.round(def.rewardCash));
+  const durationSec = commerceRewardDurationMs(def) / 1000;
+  const chunks = durationSec / COMMERCE_REWARD.chunkSec;
+  const base = Math.max(COMMERCE_REWARD.minCash, Math.round(chunks * commerceRewardRatePerChunk(def)));
+  const factor = def?.rewardFactor != null ? Number(def.rewardFactor) : 1;
+  if (!(factor > 0) || factor === 1) return base;
+  return Math.max(COMMERCE_REWARD.minCash, Math.round(base * factor));
+}
+
 export function commerceCollectXp(_def, cash) {
   return Math.max(1, Math.round(cash / 10));
+}
+
+export function makeCommerceRuntime(def) {
+  const durationMs = commerceRewardDurationMs(def);
+  return {
+    status: STATUS.WAITING,
+    durationMs,
+    remainingMs: durationMs,
+    lastIncome: 0,
+  };
 }
 
 export function wonderGoldIntervalMs(def) {
@@ -283,12 +333,7 @@ export function footprintCenter(building) {
 
 /** Matches the ghost radius drawn in the renderer. */
 export function effectiveRadiusTiles(def) {
-  const base =
-    def.clientRadiusTiles != null
-      ? def.clientRadiusTiles
-      : def.influenceRadiusTiles != null
-        ? def.influenceRadiusTiles
-        : null;
+  const base = def.influenceRadiusTiles != null ? def.influenceRadiusTiles : null;
   if (base == null || base < 0) return null;
   return base + Math.max(def.gridW, def.gridH) / 2;
 }
@@ -312,14 +357,7 @@ export function createRuntime(def, opts = {}) {
   if (cat === "house") {
     base = makeHouseRuntime(def);
   } else if (cat === "commercial") {
-    const ms = commerceDurationMs(def);
-    base = {
-      status: STATUS.WAITING,
-      remainingMs: ms,
-      durationMs: ms,
-      customers: 0,
-      lastPayout: 0,
-    };
+    base = makeCommerceRuntime(def);
   } else if (cat === "wonder") {
     const now = Date.now();
     base = {
@@ -423,7 +461,10 @@ export function buildDurationMs(def) {
     return Math.max(1, Math.round(collectSec / 2)) * 1000;
   }
   if (cat === "commercial") {
-    const collectSec = Math.max(1, def.incomeTimeSec || 180);
+    const collectSec =
+      def.rewardSec != null
+        ? Math.max(1, def.rewardSec)
+        : Math.max(1, Math.round(commerceRewardDurationMs(def) / 1000));
     return Math.max(1, Math.round(collectSec / 2)) * 1000;
   }
 
@@ -491,12 +532,9 @@ export function completeConstructionRuntime(def, rt) {
     return rt;
   }
   if (def.category === "commercial") {
-    const ms = commerceDurationMs(def);
-    rt.status = STATUS.WAITING;
-    rt.remainingMs = ms;
-    rt.durationMs = ms;
-    rt.customers = 0;
-    rt.lastPayout = 0;
+    const next = makeCommerceRuntime(def);
+    Object.keys(rt).forEach((k) => delete rt[k]);
+    Object.assign(rt, next);
     return rt;
   }
   if (def.category === "wonder") {
@@ -537,25 +575,6 @@ export function computeHouseInfluence(house, buildings) {
     }
   }
   return scaled;
-}
-
-/**
- * Customers = population of finished houses inside the shop radius.
- */
-export function computeCommerceCustomers(shop, buildings) {
-  const r = effectiveRadiusTiles(shop.def);
-  if (r == null) return 0;
-  let sum = 0;
-  for (const b of buildings) {
-    if (b.def.category !== "house") continue;
-    const rt = b.runtime;
-    if (!rt || rt.status === STATUS.BUILDING) continue;
-    const people = rt.people || 0;
-    if (!people) continue;
-    if (inRadius(shop, b, r)) sum += people;
-  }
-  const cap = shop.def.maxClients ?? 9999;
-  return Math.min(cap, sum);
 }
 
 /** Road adjacency: any footprint tile shares an edge (or corner) with a road. */
