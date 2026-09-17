@@ -2,7 +2,6 @@ import { loadGameData, enrichCatalog } from "./data.js";
 import { Grid } from "./map/grid.js";
 import { Renderer } from "./map/renderer.js";
 import { RoadLayer } from "./map/roads.js";
-import { GroundLayer, GROUND_COLORS } from "./map/ground.js";
 import { RiverLayer } from "./map/river.js";
 import { ExpansionLayer } from "./map/expansions.js";
 import { ZeppelinFlyer, ZeppelinFleet, FCB_BANNER_TEXTS, MADRID_BANNER_TEXTS } from "./map/zeppelin.js";
@@ -29,9 +28,8 @@ const state = {
   diamonds: START_DIAMONDS,
   level: 1,
   xp: 100,
-  mode: "pan", // pan (puntero) | place | move | erase | road | ground
+  mode: "pan", // pan (puntero) | place | move | erase | road
   roadKind: "road", // road | zebra
-  groundKind: "grass",
   selected: null,
 };
 
@@ -108,35 +106,29 @@ function setMode(mode) {
   canvas.classList.toggle("mode-move", mode === "move");
   canvas.classList.toggle("mode-erase", mode === "erase");
   canvas.classList.toggle("mode-road", mode === "road");
-  canvas.classList.toggle("mode-ground", mode === "ground");
   const btnPan = document.getElementById("btn-pan");
   btnPan?.classList.toggle("active", mode === "pan");
   btnPan?.setAttribute("aria-pressed", mode === "pan" ? "true" : "false");
   document.getElementById("btn-move").classList.toggle("active", mode === "move");
   document.getElementById("btn-erase").classList.toggle("active", mode === "erase");
-  document.getElementById("btn-road")?.classList.toggle("active", mode === "road");
+  const btnRoad = document.getElementById("btn-road");
+  btnRoad?.classList.toggle("active", mode === "road");
+  btnRoad?.setAttribute("aria-pressed", mode === "road" ? "true" : "false");
   if (rendererRef) {
     rendererRef.showGrid =
       (mode === "place" && !!state.selected) ||
       mode === "move" ||
       mode === "erase" ||
-      mode === "road" ||
-      mode === "ground";
+      mode === "road";
   }
   if (mode === "pan") {
     setHint("Puntero: toca para seleccionar o cobrar. Arrastra para mover la cámara.");
   } else if (mode === "move") {
     setHint("Clic en un edificio o decoración para moverlo (cuesta 1/10 del precio). Te pedirá confirmación.");
   } else if (mode === "erase") {
-    setHint("Clic en carretera, edificio o arbusto para borrarlo (reembolso 50% en edificios/carreteras). Te pedirá confirmación.");
+    setHint("Clic en carretera o edificio para borrarlo (reembolso 50%). Te pedirá confirmación.");
   } else if (mode === "road") {
-    setHint(
-      state.roadKind === "zebra"
-        ? "Pinta pasos de cebra (mismo coste que carretera). Clic vacío cancela."
-        : "Pinta carreteras: recta por defecto; curva/T/cruce según vecinos. Clic vacío cancela."
-    );
-  } else if (mode === "ground") {
-    setHint("Pinta arbustos bajo edificios. Arrastra para pintar.");
+    setHint("Pinta carreteras: recta por defecto; curva/T/cruce según vecinos. Clic vacío cancela.");
   } else if (state.selected) {
     setHint(`Colocando: ${state.selected.name}. Clic en el mapa.`);
   } else {
@@ -255,7 +247,6 @@ async function main() {
   const grid = new Grid(MAP_COLS, MAP_ROWS, TILE);
   gridRef = grid;
   const roads = new RoadLayer(grid.cols, grid.rows, data.roads);
-  const ground = new GroundLayer(grid.cols, grid.rows);
   const river = new RiverLayer(grid.cols, grid.rows, TILE);
   const expCfg = data.economy.expansions || {};
   const expansions = new ExpansionLayer(grid.cols, grid.rows, TILE, {
@@ -268,7 +259,6 @@ async function main() {
   grid.expansions = expansions;
   const renderer = new Renderer(canvas, grid, roads);
   rendererRef = renderer;
-  renderer.ground = ground;
   renderer.river = river;
   renderer.expansions = expansions;
   const zeppelin = new ZeppelinFleet([
@@ -358,7 +348,7 @@ async function main() {
     setHint(`«${building.def.name}» terminado. Coste: ${cashHtml(cost)}.`);
   }
 
-  window.__mc = { state, missions, grid, river, expansions, ground, missionsUi, sim, tooltip, renderer };
+  window.__mc = { state, missions, grid, river, expansions, missionsUi, sim, tooltip, renderer };
 
   // —— Expansion purchase dialog ——
   const expandPanel = document.getElementById("expand-panel");
@@ -523,21 +513,6 @@ async function main() {
       }
     },
     {
-      roadCost,
-      onTool: (tool) => {
-        if (tool === "road") {
-          state.roadKind = "road";
-          setMode("road");
-        } else if (tool === "zebra") {
-          state.roadKind = "zebra";
-          setMode("road");
-        } else if (tool === "grass") {
-          state.groundKind = "grass";
-          setMode("ground");
-        } else if (state.mode === "road" || state.mode === "ground") {
-          setMode("pan");
-        }
-      },
       onHover: (item, screenPos) => {
         if (item && screenPos) tooltip.showCatalog(item, screenPos);
         else if (tooltip.catalogDef) tooltip.hide();
@@ -573,7 +548,8 @@ async function main() {
     if (open) {
       document.getElementById("btn-move").classList.remove("active");
       document.getElementById("btn-erase").classList.remove("active");
-      if (state.mode === "move" || state.mode === "erase" || state.mode === "road" || state.mode === "ground") {
+      document.getElementById("btn-road")?.classList.remove("active");
+      if (state.mode === "move" || state.mode === "erase" || state.mode === "road") {
         moveDrag = null;
         renderer.hover = null;
         renderer.highlight = null;
@@ -588,6 +564,15 @@ async function main() {
     hideConfirm();
     setShopOpen(false);
     setMode("pan");
+  });
+
+  document.getElementById("btn-road").addEventListener("click", () => {
+    shop.clearSelection();
+    moveDrag = null;
+    hideConfirm();
+    setShopOpen(false);
+    state.roadKind = "road";
+    setMode(state.mode === "road" ? "pan" : "road");
   });
 
   document.getElementById("btn-move").addEventListener("click", () => {
@@ -686,11 +671,6 @@ async function main() {
     return !!grid.buildingAt(tx, ty) || river.has(tx, ty) || !expansions.isUnlocked(tx, ty);
   }
 
-  /** Pavement/grass can be painted under buildings; not on river or locked land. */
-  function blockedForGround(tx, ty) {
-    return river.has(tx, ty) || !expansions.isUnlocked(tx, ty);
-  }
-
   function paintRoadAt(tx, ty) {
     if (blockedForRoad(tx, ty)) {
       setHint("No se puede poner carretera sobre un edificio.");
@@ -715,30 +695,6 @@ async function main() {
       sim.recomputeAll();
       syncMissionValues();
       refreshHud();
-    }
-  }
-
-  function paintGroundAt(tx, ty) {
-    if (blockedForGround(tx, ty)) {
-      setHint("No se puede pintar suelo aquí.");
-      return;
-    }
-    const kind = "grass";
-    // If the tile has a building, cover its whole footprint in one stroke
-    const hit = grid.buildingAt(tx, ty);
-    let changed = false;
-    if (hit) {
-      const { def, tx: bx, ty: by } = hit;
-      for (let y = by; y < by + def.gridH; y++) {
-        for (let x = bx; x < bx + def.gridW; x++) {
-          if (ground.paint(x, y, true, blockedForGround, kind)) changed = true;
-        }
-      }
-    } else if (ground.paint(tx, ty, true, blockedForGround, kind)) {
-      changed = true;
-    }
-    if (changed) {
-      setHint("Arbusto colocado.");
     }
   }
 
@@ -783,11 +739,6 @@ async function main() {
       refreshHud();
       return true;
     }
-    if (ground.has(tx, ty)) {
-      ground.paint(tx, ty, false);
-      setHint("Arbusto borrado.");
-      return true;
-    }
     return false;
   }
 
@@ -811,9 +762,6 @@ async function main() {
       else if (goldPrice > 0) detailHtml = `Reembolso 50%: ${goldHtml(Math.floor(goldPrice * 0.5))}`;
       else detailHtml = `Reembolso 50%: ${cashHtml(Math.floor(cashPrice * 0.5))}`;
       return { name: hit.def.name, detailHtml };
-    }
-    if (ground.has(tx, ty)) {
-      return { name: "Arbusto", detailHtml: "Sin coste (gratis)" };
     }
     return null;
   }
@@ -1061,17 +1009,6 @@ async function main() {
       return;
     }
 
-    if (state.mode === "ground") {
-      if (blockedForGround(tx, ty)) {
-        clearActiveTool();
-        startCamDrag(p);
-        return;
-      }
-      paintDragging = true;
-      paintGroundAt(tx, ty);
-      return;
-    }
-
     if (state.mode === "place" && state.selected) {
       const def = state.selected;
       const diamondCost = def.costDiamonds || 0;
@@ -1177,13 +1114,6 @@ async function main() {
       }
     }
 
-    if (paintDragging && state.mode === "ground") {
-      if (key !== lastPaintKey) {
-        lastPaintKey = key;
-        paintGroundAt(tx, ty);
-      }
-    }
-
     if (state.mode === "pan" || (state.mode === "place" && !state.selected && !camDragging && !paintDragging)) {
       renderer.hover = null;
       renderer.highlight = null;
@@ -1224,18 +1154,6 @@ async function main() {
       renderer.expandHover = null;
       renderer.radiusFocus = null;
       tooltip.hide();
-    } else if (state.mode === "ground") {
-      renderer.hover = {
-        tx,
-        ty,
-        ground: true,
-        color: GROUND_COLORS.grass,
-        valid: !blockedForGround(tx, ty),
-      };
-      renderer.highlight = null;
-      renderer.expandHover = null;
-      renderer.radiusFocus = null;
-      tooltip.hide();
     } else if (state.mode === "move") {
       const hit = grid.buildingAt(tx, ty);
       renderer.hover = null;
@@ -1259,8 +1177,6 @@ async function main() {
           gridH: hit.def.gridH,
           kind: "erase",
         };
-      } else if (ground.has(tx, ty)) {
-        renderer.highlight = { tx, ty, gridW: 1, gridH: 1, kind: "erase" };
       } else {
         renderer.highlight = null;
       }

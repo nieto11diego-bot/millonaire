@@ -1,4 +1,4 @@
-import { cashHtml, costHtml } from "./money.js";
+import { costHtml } from "./money.js";
 import { normalizedBuildCost } from "../economy.js";
 
 /**
@@ -10,8 +10,6 @@ export class ShopUI {
    * @param {{ houses: object[], commerces: object[], decorations: object[], wonders?: object[], services?: object[] }} catalog
    * @param {(item: object|null) => void} onSelect
    * @param {{
-   *   roadCost?: number,
-   *   onTool?: (tool: string|null) => void,
    *   onHover?: (item: object|null, screenPos?: { left: number, top: number }|null) => void,
    * }} [options]
    */
@@ -19,11 +17,8 @@ export class ShopUI {
     this.root = root;
     this.catalog = catalog;
     this.onSelect = onSelect;
-    this.onTool = options.onTool || (() => {});
     this.onHover = options.onHover || (() => {});
-    this.roadCost = options.roadCost ?? 500;
     this.selected = null;
-    this.tool = null;
     this.tab = "houses";
 
     root.querySelectorAll(".tab").forEach((btn) => {
@@ -32,9 +27,7 @@ export class ShopUI {
         btn.classList.add("active");
         this.tab = btn.dataset.tab;
         this.selected = null;
-        this.tool = null;
         this.onSelect(null);
-        this.onTool(null);
         this.onHover(null);
         this.render();
       });
@@ -46,9 +39,23 @@ export class ShopUI {
 
   clearSelection() {
     this.selected = null;
-    this.tool = null;
     this.onSelect(null);
-    this.onTool(null);
+    this.onHover(null);
+    this.render();
+  }
+
+  /**
+   * Switch shop tab by id (e.g. "commerces").
+   * @param {string} tab
+   */
+  setTab(tab) {
+    const btn = this.root.querySelector(`.tab[data-tab="${tab}"]`);
+    if (!btn) return;
+    this.root.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    this.tab = tab;
+    this.selected = null;
+    this.onSelect(null);
     this.onHover(null);
     this.render();
   }
@@ -121,72 +128,6 @@ export class ShopUI {
     list.innerHTML = "";
     this.onHover(null);
 
-    if (this.tab === "tools") {
-      const roadBtn = document.createElement("button");
-      roadBtn.type = "button";
-      roadBtn.className = "card" + (this.tool === "road" ? " selected" : "");
-      roadBtn.innerHTML = `
-        <img src="assets/roads/straight_ew.png" alt="" />
-        <div class="meta">
-          <div class="name">Carretera</div>
-          <div class="sub">${cashHtml(this.roadCost)} / tile</div>
-        </div>
-      `;
-      roadBtn.addEventListener("click", () => {
-        this.selected = null;
-        this.onSelect(null);
-        this.tool = this.tool === "road" ? null : "road";
-        this.onTool(this.tool);
-        this.render();
-      });
-      list.appendChild(roadBtn);
-
-      const zebraBtn = document.createElement("button");
-      zebraBtn.type = "button";
-      zebraBtn.className = "card" + (this.tool === "zebra" ? " selected" : "");
-      zebraBtn.innerHTML = `
-        <img src="assets/roads/r1_0623.png" alt="" />
-        <div class="meta">
-          <div class="name">Paso de cebra</div>
-          <div class="sub">${cashHtml(this.roadCost)} / tile</div>
-        </div>
-      `;
-      zebraBtn.addEventListener("click", () => {
-        this.selected = null;
-        this.onSelect(null);
-        this.tool = this.tool === "zebra" ? null : "zebra";
-        this.onTool(this.tool);
-        this.render();
-      });
-      list.appendChild(zebraBtn);
-
-      const grassBtn = document.createElement("button");
-      grassBtn.type = "button";
-      grassBtn.className = "card" + (this.tool === "grass" ? " selected" : "");
-      grassBtn.innerHTML = `
-        <img src="assets/ground/bush.png" alt="" />
-        <div class="meta">
-          <div class="name">Arbusto</div>
-          <div class="sub">Gratis · bajo edificios</div>
-        </div>
-      `;
-      grassBtn.addEventListener("click", () => {
-        this.selected = null;
-        this.onSelect(null);
-        this.tool = this.tool === "grass" ? null : "grass";
-        this.onTool(this.tool);
-        this.render();
-      });
-      list.appendChild(grassBtn);
-
-      const help = document.createElement("p");
-      help.style.cssText = "color:#1a5f96;font-size:0.8rem;padding:0.5rem;margin:0;font-weight:600";
-      help.innerHTML =
-        "Pinta arrastrando. <strong>Arbusto</strong> se puede poner debajo de edificios ya construidos. Recta por defecto en carreteras; curva / T / cruce según vecinos. <strong>Borrar</strong> quita carretera, edificio o arbusto. Clic vacío o Esc cancela.";
-      list.appendChild(help);
-      return;
-    }
-
     const items = this.itemsForTab();
     for (const item of items) {
       const btn = document.createElement("button");
@@ -204,8 +145,6 @@ export class ShopUI {
         </div>
       `;
       btn.addEventListener("click", () => {
-        this.tool = null;
-        this.onTool(null);
         this.onHover(null);
         if (this.selected === item) {
           this.selected = null;

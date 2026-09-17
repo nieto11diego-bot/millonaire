@@ -1,8 +1,6 @@
 import { spriteOrigin } from "./grid.js";
 import { FloatingRewards } from "./floatingRewards.js";
 
-const BUSH_SPRITE = "assets/ground/bush.png";
-
 /**
  * Canvas renderer: grass grid + buildings with Y-sort.
  */
@@ -17,8 +15,6 @@ export class Renderer {
     this.grid = grid;
     /** @type {import("./roads.js").RoadLayer|null} */
     this.roads = roads;
-    /** @type {import("./ground.js").GroundLayer|null} */
-    this.ground = null;
     this.camera = { x: 0, y: 0, zoom: 1 };
     /** @type {Map<string, HTMLImageElement>} */
     this.images = new Map();
@@ -67,7 +63,6 @@ export class Renderer {
       "assets/ui/icon_cash.png",
       "assets/ui/icon_gold.svg",
       "assets/ui/icon_diamond.svg",
-      BUSH_SPRITE,
     ];
     await Promise.all(
       urls.map(
@@ -183,35 +178,8 @@ export class Renderer {
       }
     }
 
-    // Grass / bush tool: above base grass (+ roads), strictly under buildings
-    if (this.ground) {
-      const bush = this.images.get(BUSH_SPRITE);
-      for (let ty = 0; ty < rows; ty++) {
-        for (let tx = 0; tx < cols; tx++) {
-          if (!this.ground.has(tx, ty)) continue;
-          if (this.river?.has(tx, ty)) continue;
-          // Keep roads visible on the same tile
-          if (this.roads?.has(tx, ty)) continue;
-          this._drawBush(ctx, bush, tx, ty, tile, 1);
-        }
-      }
-    }
-
     // Ghost placement (previews under building sprites when applicable)
-    if (this.hover && this.hover.ground) {
-      const { tx, ty, valid } = this.hover;
-      if (valid) {
-        ctx.globalAlpha = 0.55;
-        this._drawBush(ctx, this.images.get(BUSH_SPRITE), tx, ty, tile, 1);
-        ctx.globalAlpha = 1;
-      } else {
-        ctx.fillStyle = "rgba(224,122,95,0.4)";
-        ctx.fillRect(tx * tile, ty * tile, tile, tile);
-      }
-      ctx.strokeStyle = valid ? "#fff" : "#e07a5f";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(tx * tile + 1, ty * tile + 1, tile - 2, tile - 2);
-    } else if (this.hover && this.hover.road) {
+    if (this.hover && this.hover.road) {
       const { tx, ty, valid } = this.hover;
       ctx.fillStyle = valid ? "rgba(80,80,80,0.45)" : "rgba(224,122,95,0.4)";
       ctx.fillRect(tx * tile, ty * tile, tile, tile);
@@ -311,33 +279,6 @@ export class Renderer {
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
     ctx.globalAlpha = 1;
-  }
-
-  /**
-   * Round bush sprite for the grass/bush paint tool.
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {HTMLImageElement|undefined} img
-   * @param {number} tx
-   * @param {number} ty
-   * @param {number} tile
-   * @param {number} [alpha]
-   */
-  _drawBush(ctx, img, tx, ty, tile, alpha = 1) {
-    if (!img) {
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = "#6B8E23";
-      ctx.fillRect(tx * tile + 2, ty * tile + 2, tile - 4, tile - 4);
-      ctx.globalAlpha = 1;
-      return;
-    }
-    const dw = tile * 1.2;
-    const dh = (img.height / Math.max(1, img.width)) * dw;
-    const dx = tx * tile + (tile - dw) / 2;
-    const dy = ty * tile + tile - dh + 2;
-    const prev = ctx.globalAlpha;
-    ctx.globalAlpha = prev * alpha;
-    ctx.drawImage(img, dx, dy, dw, dh);
-    ctx.globalAlpha = prev;
   }
 
   /** Locked parcels (fog) + adjacent For Sale signs. */
