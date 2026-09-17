@@ -488,9 +488,10 @@ export function buildPlaceXp(def) {
   if (!def) return 0;
   const cost = normalizedBuildCost(def);
   if (cost <= 0) return BUILD_PLACE_XP.min;
+  const scale = def.buildXpScale != null ? Number(def.buildXpScale) : 1;
   return Math.max(
     BUILD_PLACE_XP.min,
-    Math.round((cost / BUILD_PLACE_XP.cashPerXp) * XP_REWARD_SCALE)
+    Math.round((cost / BUILD_PLACE_XP.cashPerXp) * XP_REWARD_SCALE * scale)
   );
 }
 
