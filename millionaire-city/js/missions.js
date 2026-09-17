@@ -308,11 +308,20 @@ export class MissionTracker {
       }
       if (need > 0 && bestPct >= need) this.improve(sku);
     }
-  }
 
-  onContractSigned() {
-    this.improve(5);
-    this.improve(6);
+    // Total city population missions
+    let population = 0;
+    for (const b of grid.buildings) {
+      if (b.def?.category !== "house") continue;
+      if (b.runtime?.status === "building") continue;
+      population += b.runtime?.people || 0;
+    }
+    for (const sku of [5, 6]) {
+      const m = this.bySku.get(sku);
+      if (!m || this.isCompleted(sku) || !this.isUnlocked(sku)) continue;
+      const need = m.target?.condition || m.target?.amount || 0;
+      if (need > 0 && population >= need) this.improve(sku);
+    }
   }
 
   onRentCollected() {
@@ -377,7 +386,7 @@ function isTrackableNow(m) {
     metric === "buildings_built" ||
     metric === "wonders_owned" ||
     metric === "company_value" ||
-    metric === "contracts_signed" ||
+    metric === "population_total" ||
     metric === "rents_collected" ||
     metric === "commerce_collects" ||
     metric === "customers" ||

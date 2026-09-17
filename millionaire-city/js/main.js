@@ -2,6 +2,7 @@ import { loadGameData, enrichCatalog } from "./data.js";
 import { Grid } from "./map/grid.js";
 import { Renderer } from "./map/renderer.js";
 import { RoadLayer } from "./map/roads.js";
+import { GroundLayer, GROUND_COLORS } from "./map/ground.js";
 import { RiverLayer } from "./map/river.js";
 import { ExpansionLayer } from "./map/expansions.js";
 import { ZeppelinFlyer, ZeppelinFleet, FCB_BANNER_TEXTS, MADRID_BANNER_TEXTS } from "./map/zeppelin.js";
@@ -9,10 +10,9 @@ import { FighterPair } from "./map/fighter.js";
 import { ShopUI } from "./ui/shop.js";
 import { MissionTracker, companyValueFromGrid } from "./missions.js";
 import { MissionsUI } from "./ui/missions.js";
-import { ContractsUI } from "./ui/contracts.js";
 import { BuildingTooltip } from "./ui/tooltip.js";
 import { EconomySim } from "./sim.js";
-import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, happinessMultiplier } from "./economy.js";
+import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, buildDurationMs, buildPlaceXp, buildLevelThresholds, isConstructing } from "./economy.js";
 import { cashHtml, goldHtml, diamondHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
 import { nextLevelReward, rewardsBetween, sumRewards } from "./levelRewards.js";
 
@@ -29,8 +29,9 @@ const state = {
   diamonds: START_DIAMONDS,
   level: 1,
   xp: 100,
-  mode: "pan", // pan (puntero) | place | move | erase | road
+  mode: "pan", // pan (puntero) | place | move | erase | road | ground
   roadKind: "road", // road | zebra
+  groundKind: "grass",
   selected: null,
 };
 
@@ -43,9 +44,6 @@ const xpFillEl = document.getElementById("xp-fill");
 const xpHudEl = document.getElementById("xp-hud");
 const levelRewardTipEl = document.getElementById("level-reward-tip");
 const levelRewardTipBodyEl = document.getElementById("level-reward-tip-body");
-const happinessHudEl = document.getElementById("happiness-hud");
-const happinessFillEl = document.getElementById("happiness-fill");
-const happinessValueEl = document.getElementById("happiness-value");
 const hintEl = document.getElementById("hint");
 const canvas = document.getElementById("map");
 
@@ -77,19 +75,6 @@ function refreshHud() {
   const { pct, label } = xpProgress(state.xp, state.level, levelThresholds);
   xpEl.textContent = label;
   if (xpFillEl) xpFillEl.style.width = `${pct}%`;
-
-  const happy = sim?.cityHappiness?.happiness ?? 0;
-  const mult = sim?.cityHappiness?.multiplier ?? happinessMultiplier(happy);
-  if (happinessFillEl) happinessFillEl.style.width = `${happy}%`;
-  if (happinessValueEl) happinessValueEl.textContent = `${happy}%`;
-  if (happinessHudEl) {
-    const mood = happy < 40 ? "sad" : happy < 70 ? "ok" : "happy";
-    happinessHudEl.dataset.mood = mood;
-    const parts = sim?.cityHappiness
-      ? `Servicios +${sim.cityHappiness.services} · Decoración +${sim.cityHappiness.decorations} · Maravillas +${sim.cityHappiness.wonders} · Calles +${sim.cityHappiness.roads}`
-      : "";
-    happinessHudEl.title = `Felicidad de la ciudad: ${happy}% (recompensas ×${mult.toFixed(2)})${parts ? `\n${parts}` : ""}`;
-  }
 }
 
 /** Independent rolls: gold 1/13, diamond 1/20 (can get both). */
@@ -123,6 +108,7 @@ function setMode(mode) {
   canvas.classList.toggle("mode-move", mode === "move");
   canvas.classList.toggle("mode-erase", mode === "erase");
   canvas.classList.toggle("mode-road", mode === "road");
+  canvas.classList.toggle("mode-ground", mode === "ground");
   const btnPan = document.getElementById("btn-pan");
   btnPan?.classList.toggle("active", mode === "pan");
   btnPan?.setAttribute("aria-pressed", mode === "pan" ? "true" : "false");
@@ -131,24 +117,30 @@ function setMode(mode) {
   document.getElementById("btn-road")?.classList.toggle("active", mode === "road");
   if (rendererRef) {
     rendererRef.showGrid =
-      (mode === "place" && !!state.selected) || mode === "move" || mode === "road";
+      (mode === "place" && !!state.selected) ||
+      mode === "move" ||
+      mode === "erase" ||
+      mode === "road" ||
+      mode === "ground";
   }
   if (mode === "pan") {
     setHint("Puntero: toca para seleccionar o cobrar. Arrastra para mover la cámara.");
   } else if (mode === "move") {
     setHint("Clic en un edificio o decoración para moverlo (cuesta 1/10 del precio). Te pedirá confirmación.");
   } else if (mode === "erase") {
-    setHint("Clic en carretera o edificio para borrarlo (reembolso 50%). Te pedirá confirmación.");
+    setHint("Clic en carretera, edificio o hierba para borrarlo (reembolso 50% en edificios/carreteras). Te pedirá confirmación.");
   } else if (mode === "road") {
     setHint(
       state.roadKind === "zebra"
         ? "Pinta pasos de cebra (mismo coste que carretera). Clic vacío cancela."
         : "Pinta carreteras: recta por defecto; curva/T/cruce según vecinos. Clic vacío cancela."
     );
+  } else if (mode === "ground") {
+    setHint("Pinta hierba bajo edificios (cubre el verde del mapa). Arrastra para pintar.");
   } else if (state.selected) {
     setHint(`Colocando: ${state.selected.name}. Clic en el mapa.`);
   } else {
-    setHint("Arrastra para mover la cámara. Toca una casa para contrato, o un edificio con $ para cobrar.");
+    setHint("Arrastra para mover la cámara. Toca un edificio con $ para cobrar alquiler o beneficios.");
   }
 }
 
@@ -231,8 +223,8 @@ function syncMissionValues() {
   missions.syncValueMissions(state.cash, companyValueFromGrid(gridRef), gridRef);
 }
 
-function initBuilding(building) {
-  building.runtime = createRuntime(building.def);
+function initBuilding(building, opts = {}) {
+  building.runtime = createRuntime(building.def, opts);
   sim?.recomputeAll();
   refreshHud();
 }
@@ -256,13 +248,14 @@ async function main() {
     ...(catalog.services || []),
   ];
   const roadCost = data.roads.costCoins ?? 500;
-  levelThresholds = data.economy.levelCurve?.thresholds || null;
+  levelThresholds = buildLevelThresholds(data.economy.levelCurve || {});
 
   const MAP_COLS = 80; // 5 × 16
   const MAP_ROWS = 80; // 5 × 16 → 25 equal parcels
   const grid = new Grid(MAP_COLS, MAP_ROWS, TILE);
   gridRef = grid;
   const roads = new RoadLayer(grid.cols, grid.rows, data.roads);
+  const ground = new GroundLayer(grid.cols, grid.rows);
   const river = new RiverLayer(grid.cols, grid.rows, TILE);
   const expCfg = data.economy.expansions || {};
   const expansions = new ExpansionLayer(grid.cols, grid.rows, TILE, {
@@ -275,6 +268,7 @@ async function main() {
   grid.expansions = expansions;
   const renderer = new Renderer(canvas, grid, roads);
   rendererRef = renderer;
+  renderer.ground = ground;
   renderer.river = river;
   renderer.expansions = expansions;
   const zeppelin = new ZeppelinFleet([
@@ -311,9 +305,6 @@ async function main() {
     onEvent: (type, payload) => {
       if (type === "rent_ready") {
         setHint(`Alquiler listo: ${payload.building.def.name}. Toca el edificio para cobrar.`);
-      } else if (type === "rent_lost") {
-        setHint(`Perdiste el alquiler de ${payload.building.def.name}. Toca para firmar de nuevo.`);
-        syncMissionValues();
       } else if (type === "commerce_ready") {
         const n = payload.building.runtime?.customers || 0;
         setHint(`${payload.building.def.name} listo (${n} clientes). Toca para cobrar.`);
@@ -321,6 +312,9 @@ async function main() {
         setHint(`${payload.building.def.name}: oro listo. Toca la maravilla para cobrar.`);
       } else if (type === "wonder_diamond_ready") {
         setHint(`${payload.building.def.name}: diamante listo. Toca la maravilla para cobrar.`);
+      } else if (type === "build_complete") {
+        setHint(`«${payload.building.def.name}» terminado. La población empezará a crecer.`);
+        syncMissionValues();
       }
     },
   });
@@ -340,37 +334,31 @@ async function main() {
   });
 
   const t = (tid, fb) => missions.t(tid, fb);
-  const contractsUi = new ContractsUI(document.getElementById("contracts-panel"), {
-    t,
-    onSign: (contractId) => {
-      const building = contractsUi.building;
-      if (!building) return;
-      const result = sim.signContract(building, contractId, state.cash);
-      if (!result.ok) {
-        if (result.reason === "no_cash") setHint("No tienes suficiente efectivo para ese contrato.");
-        else if (result.reason === "no_road") setHint("La casa necesita conexión a carretera.");
-        else setHint("No se pudo firmar el contrato.");
-        return;
-      }
-      state.cash -= result.cost;
-      missions.onContractSigned();
-      applyXp(result.xp || 0);
-      syncMissionValues();
-      refreshHud();
-      contractsUi.hide();
-      const wait = formatDuration(building.runtime.durationMs / TIME_SCALE);
-      setHint(
-        `Contrato firmado en ${building.def.name}: +$${result.income.toLocaleString("en-US")} en ~${wait} (${result.tenants} inquilinos).`
-      );
-    },
-  });
 
   const tooltip = new BuildingTooltip(document.getElementById("building-tooltip"), {
     t,
-    getContract: (id) => sim.index.contractById[id] || null,
+    onInstantBuild: (building) => tryInstantBuild(building),
   });
 
-  window.__mc = { state, missions, grid, river, expansions, missionsUi, contractsUi, sim, tooltip, renderer };
+  function tryInstantBuild(building) {
+    if (!isConstructing(building)) return;
+    const cost = sim.instantBuildCost(building);
+    if (state.cash < cost) {
+      setHint(`Necesitas ${cashHtml(cost)} para terminar «${building.def.name}» ahora.`);
+      return;
+    }
+    state.cash -= cost;
+    const result = sim.finishBuild(building);
+    if (!result.ok) {
+      state.cash += cost;
+      return;
+    }
+    refreshHud();
+    tooltip.hide();
+    setHint(`«${building.def.name}» terminado. Coste: ${cashHtml(cost)}.`);
+  }
+
+  window.__mc = { state, missions, grid, river, expansions, ground, missionsUi, sim, tooltip, renderer };
 
   // —— Expansion purchase dialog ——
   const expandPanel = document.getElementById("expand-panel");
@@ -484,7 +472,6 @@ async function main() {
     e.preventDefault();
     if (!confirmPanel.hidden) hideConfirm();
     else if (!expandPanel.hidden) hideExpandBuy();
-    else if (contractsUi.open) contractsUi.hide();
     else if (missionsUi.open) missionsUi.hide();
     else clearActiveTool();
   });
@@ -498,7 +485,7 @@ async function main() {
     starterTx = foot.tx;
     starterTy = foot.ty;
     const placed = grid.place(starter, starterTx, starterTy);
-    if (placed) initBuilding(placed);
+    if (placed) initBuilding(placed, { skipBuild: true });
     // Road ring south of starter (free), only on unlocked tiles
     for (let x = starterTx - 1; x < starterTx + starter.gridW + 1; x++) {
       if (!expansions.isUnlocked(x, starterTy + starter.gridH)) continue;
@@ -544,7 +531,10 @@ async function main() {
         } else if (tool === "zebra") {
           state.roadKind = "zebra";
           setMode("road");
-        } else if (state.mode === "road") {
+        } else if (tool === "grass") {
+          state.groundKind = "grass";
+          setMode("ground");
+        } else if (state.mode === "road" || state.mode === "ground") {
           setMode("pan");
         }
       },
@@ -571,6 +561,7 @@ async function main() {
     moveDrag = null;
     hideConfirm();
     renderer.hover = null;
+    renderer.highlight = null;
     renderer.radiusFocus = null;
     shop.clearSelection();
     setMode("pan");
@@ -582,10 +573,10 @@ async function main() {
     if (open) {
       document.getElementById("btn-move").classList.remove("active");
       document.getElementById("btn-erase").classList.remove("active");
-      document.getElementById("btn-road").classList.remove("active");
-      if (state.mode === "move" || state.mode === "erase" || state.mode === "road") {
+      if (state.mode === "move" || state.mode === "erase" || state.mode === "road" || state.mode === "ground") {
         moveDrag = null;
         renderer.hover = null;
+        renderer.highlight = null;
         setMode(state.selected ? "place" : "pan");
       }
     }
@@ -597,16 +588,6 @@ async function main() {
     hideConfirm();
     setShopOpen(false);
     setMode("pan");
-  });
-
-  document.getElementById("btn-road").addEventListener("click", () => {
-    shop.clearSelection();
-    moveDrag = null;
-    hideConfirm();
-    setShopOpen(false);
-    state.roadKind = "road";
-    shop.tool = state.mode === "road" ? null : "road";
-    setMode(state.mode === "road" ? "pan" : "road");
   });
 
   document.getElementById("btn-move").addEventListener("click", () => {
@@ -705,6 +686,11 @@ async function main() {
     return !!grid.buildingAt(tx, ty) || river.has(tx, ty) || !expansions.isUnlocked(tx, ty);
   }
 
+  /** Pavement/grass can be painted under buildings; not on river or locked land. */
+  function blockedForGround(tx, ty) {
+    return river.has(tx, ty) || !expansions.isUnlocked(tx, ty);
+  }
+
   function paintRoadAt(tx, ty) {
     if (blockedForRoad(tx, ty)) {
       setHint("No se puede poner carretera sobre un edificio.");
@@ -729,6 +715,30 @@ async function main() {
       sim.recomputeAll();
       syncMissionValues();
       refreshHud();
+    }
+  }
+
+  function paintGroundAt(tx, ty) {
+    if (blockedForGround(tx, ty)) {
+      setHint("No se puede pintar suelo aquí.");
+      return;
+    }
+    const kind = "grass";
+    // If the tile has a building, cover its whole footprint in one stroke
+    const hit = grid.buildingAt(tx, ty);
+    let changed = false;
+    if (hit) {
+      const { def, tx: bx, ty: by } = hit;
+      for (let y = by; y < by + def.gridH; y++) {
+        for (let x = bx; x < bx + def.gridW; x++) {
+          if (ground.paint(x, y, true, blockedForGround, kind)) changed = true;
+        }
+      }
+    } else if (ground.paint(tx, ty, true, blockedForGround, kind)) {
+      changed = true;
+    }
+    if (changed) {
+      setHint("Hierba colocada.");
     }
   }
 
@@ -773,6 +783,11 @@ async function main() {
       refreshHud();
       return true;
     }
+    if (ground.has(tx, ty)) {
+      ground.paint(tx, ty, false);
+      setHint("Hierba borrada.");
+      return true;
+    }
     return false;
   }
 
@@ -787,15 +802,20 @@ async function main() {
       };
     }
     const hit = grid.buildingAt(tx, ty);
-    if (!hit) return null;
-    const diamondPrice = hit.def.costDiamonds || 0;
-    const goldPrice = hit.def.costFortune || 0;
-    const cashPrice = hit.def.costCoins || 0;
-    let detailHtml;
-    if (diamondPrice > 0) detailHtml = `Reembolso 50%: ${diamondHtml(Math.floor(diamondPrice * 0.5))}`;
-    else if (goldPrice > 0) detailHtml = `Reembolso 50%: ${goldHtml(Math.floor(goldPrice * 0.5))}`;
-    else detailHtml = `Reembolso 50%: ${cashHtml(Math.floor(cashPrice * 0.5))}`;
-    return { name: hit.def.name, detailHtml };
+    if (hit) {
+      const diamondPrice = hit.def.costDiamonds || 0;
+      const goldPrice = hit.def.costFortune || 0;
+      const cashPrice = hit.def.costCoins || 0;
+      let detailHtml;
+      if (diamondPrice > 0) detailHtml = `Reembolso 50%: ${diamondHtml(Math.floor(diamondPrice * 0.5))}`;
+      else if (goldPrice > 0) detailHtml = `Reembolso 50%: ${goldHtml(Math.floor(goldPrice * 0.5))}`;
+      else detailHtml = `Reembolso 50%: ${cashHtml(Math.floor(cashPrice * 0.5))}`;
+      return { name: hit.def.name, detailHtml };
+    }
+    if (ground.has(tx, ty)) {
+      return { name: "Hierba", detailHtml: "Sin coste (gratis)" };
+    }
+    return null;
   }
 
   function askMoveBuilding(hit, tx, ty) {
@@ -839,23 +859,18 @@ async function main() {
   function interactBuilding(building) {
     const action = sim.tapAction(building);
 
-    if (action === "open_contracts") {
-      if (needsRoad(building.def) && !isRoadConnected(building, roads)) {
-        setHint("Esta casa necesita carretera adyacente para firmar contratos.");
-        return;
-      }
-      contractsUi.show(building, sim.previewContracts(building));
-      return;
-    }
-
-    if (action === "clear_lost") {
-      sim.clearLost(building);
-      contractsUi.show(building, sim.previewContracts(building));
-      setHint("Alquiler perdido. Elige un nuevo contrato.");
+    if (action === "finish_build") {
+      const anchor = renderer.buildingAnchorScreen(building);
+      tooltip.show(building, { left: anchor.x, top: anchor.y });
+      setHint(`«${building.def.name}»: confirma con ✓ o cancela con ✕.`);
       return;
     }
 
     if (action === "collect_rent") {
+      if (needsRoad(building.def) && !isRoadConnected(building, roads)) {
+        setHint("Esta casa necesita carretera adyacente para cobrar alquiler.");
+        return;
+      }
       const result = sim.collectRent(building);
       if (!result.ok) return;
       state.cash += result.cash;
@@ -901,12 +916,18 @@ async function main() {
     }
 
     if (building.def.category === "house" && building.runtime?.status === "waiting") {
+      const rt = building.runtime;
       setHint(
-        `${building.def.name}: contrato en curso (${formatDuration(building.runtime.remainingMs / TIME_SCALE)} resto).`
+        `${building.def.name}: ${rt.people || 0}/${rt.maxPeople || 0} hab. · cobra en ${formatDuration(rt.remainingMs / TIME_SCALE)}.`
       );
     } else if (building.def.category === "commercial" && building.runtime?.status === "waiting") {
       setHint(
         `${building.def.name}: ${building.runtime.customers || 0} clientes · cobra en ${formatDuration(building.runtime.remainingMs / TIME_SCALE)}.`
+      );
+    } else if (isConstructing(building)) {
+      const left = Math.max(0, (building.runtime.buildEndsAt || 0) - Date.now());
+      setHint(
+        `${building.def.name}: en construcción (${formatDuration(left)}). Usa construcción rápida o espera.`
       );
     } else if (building.def.category === "wonder" && building.runtime) {
       const rt = building.runtime;
@@ -928,6 +949,7 @@ async function main() {
     const dropTx = tx - ox;
     const dropTy = ty - oy;
     const valid = canDropBuilding(building, dropTx, dropTy);
+    renderer.highlight = null;
     renderer.hover = {
       tx: dropTx,
       ty: dropTy,
@@ -1039,6 +1061,17 @@ async function main() {
       return;
     }
 
+    if (state.mode === "ground") {
+      if (blockedForGround(tx, ty)) {
+        clearActiveTool();
+        startCamDrag(p);
+        return;
+      }
+      paintDragging = true;
+      paintGroundAt(tx, ty);
+      return;
+    }
+
     if (state.mode === "place" && state.selected) {
       const def = state.selected;
       const diamondCost = def.costDiamonds || 0;
@@ -1070,10 +1103,15 @@ async function main() {
         else if (goldCost > 0) state.gold -= goldCost;
         else state.cash -= cashCost;
         missions?.onBuildingBought(def);
-        applyXp(def.exp || 0);
+        applyXp(buildPlaceXp(def));
         syncMissionValues();
         refreshHud();
-        setHint(`Colocado: ${def.name}`);
+        const buildMs = buildDurationMs(def);
+        setHint(
+          buildMs > 0
+            ? `Colocado: ${def.name}. Construcción: ${formatDuration(buildMs)}.`
+            : `Colocado: ${def.name}`
+        );
       }
       return;
     }
@@ -1117,6 +1155,7 @@ async function main() {
       lastX = p.x;
       lastY = p.y;
       renderer.radiusFocus = null;
+      renderer.highlight = null;
       tooltip.hide();
       return;
     }
@@ -1138,8 +1177,16 @@ async function main() {
       }
     }
 
+    if (paintDragging && state.mode === "ground") {
+      if (key !== lastPaintKey) {
+        lastPaintKey = key;
+        paintGroundAt(tx, ty);
+      }
+    }
+
     if (state.mode === "pan" || (state.mode === "place" && !state.selected && !camDragging && !paintDragging)) {
       renderer.hover = null;
+      renderer.highlight = null;
       const zone = expansions.zoneAt(tx, ty);
       renderer.expandHover =
         zone && expansions.isBuyable(zone.zx, zone.zy) ? { zx: zone.zx, zy: zone.zy } : null;
@@ -1155,9 +1202,9 @@ async function main() {
       } else if (renderer.expandHover) {
         const cost = expansions.costFor(renderer.expandHover.zx, renderer.expandHover.zy);
         setHint(`Expansión en venta: $${(cost || 0).toLocaleString("en-US")}. Toca para comprar.`);
-        tooltip.hide();
+        if (!tooltip.pointerInside) tooltip.scheduleHide(80);
       } else {
-        tooltip.hide();
+        if (!tooltip.pointerInside) tooltip.scheduleHide(80);
       }
     } else if (state.mode === "road") {
       renderer.hover = {
@@ -1166,17 +1213,52 @@ async function main() {
         road: true,
         valid: !blockedForRoad(tx, ty) && state.cash >= roadCost,
       };
+      renderer.highlight = null;
+      renderer.expandHover = null;
+      renderer.radiusFocus = null;
+      tooltip.hide();
+    } else if (state.mode === "ground") {
+      renderer.hover = {
+        tx,
+        ty,
+        ground: true,
+        color: GROUND_COLORS.grass,
+        valid: !blockedForGround(tx, ty),
+      };
+      renderer.highlight = null;
       renderer.expandHover = null;
       renderer.radiusFocus = null;
       tooltip.hide();
     } else if (state.mode === "move") {
       const hit = grid.buildingAt(tx, ty);
-      renderer.hover = hit
-        ? { tx: hit.tx, ty: hit.ty, def: hit.def, valid: true }
+      renderer.hover = null;
+      renderer.highlight = hit
+        ? { tx: hit.tx, ty: hit.ty, gridW: hit.def.gridW, gridH: hit.def.gridH, kind: "move" }
         : null;
       renderer.expandHover = null;
       renderer.radiusFocus =
         hit && hasInfluenceRadius(hit.def) ? { tx: hit.tx, ty: hit.ty, def: hit.def } : null;
+      tooltip.hide();
+    } else if (state.mode === "erase") {
+      const hit = grid.buildingAt(tx, ty);
+      renderer.hover = null;
+      if (roads.has(tx, ty)) {
+        renderer.highlight = { tx, ty, gridW: 1, gridH: 1, kind: "erase" };
+      } else if (hit) {
+        renderer.highlight = {
+          tx: hit.tx,
+          ty: hit.ty,
+          gridW: hit.def.gridW,
+          gridH: hit.def.gridH,
+          kind: "erase",
+        };
+      } else if (ground.has(tx, ty)) {
+        renderer.highlight = { tx, ty, gridW: 1, gridH: 1, kind: "erase" };
+      } else {
+        renderer.highlight = null;
+      }
+      renderer.expandHover = null;
+      renderer.radiusFocus = null;
       tooltip.hide();
     } else if (state.mode === "place" && state.selected) {
       const def = state.selected;
@@ -1193,11 +1275,13 @@ async function main() {
               ? state.gold >= def.costFortune
               : state.cash >= (def.costCoins || 0)),
       };
+      renderer.highlight = null;
       renderer.expandHover = null;
       renderer.radiusFocus = hasInfluenceRadius(def) ? { tx, ty, def } : null;
       tooltip.hide();
     } else {
       renderer.hover = null;
+      renderer.highlight = null;
       renderer.expandHover = null;
       renderer.radiusFocus = null;
       tooltip.hide();
@@ -1214,10 +1298,15 @@ async function main() {
     canvas.classList.remove("dragging");
   });
   canvas.addEventListener("pointerleave", () => {
-    if (!moveDrag) renderer.hover = null;
+    if (!moveDrag) {
+      renderer.hover = null;
+      renderer.highlight = null;
+    }
     renderer.expandHover = null;
     renderer.radiusFocus = null;
-    tooltip.hide();
+    if (!tooltip.pointerInside) {
+      tooltip.scheduleHide(tooltip.root.classList.contains("interactive") ? 280 : 120);
+    }
   });
 
   canvas.addEventListener(

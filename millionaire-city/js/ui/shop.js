@@ -1,4 +1,5 @@
 import { cashHtml, costHtml } from "./money.js";
+import { normalizedBuildCost } from "../economy.js";
 
 /**
  * Shop panel: lists catalog items and reports selection.
@@ -73,17 +74,7 @@ export class ShopUI {
       default:
         return [];
     }
-    return [...items].sort((a, b) => {
-      const ca =
-        (a.costDiamonds || 0) * 1_000_000_000_000 +
-        (a.costFortune || 0) * 1_000_000_000 +
-        (a.costCoins || 0);
-      const cb =
-        (b.costDiamonds || 0) * 1_000_000_000_000 +
-        (b.costFortune || 0) * 1_000_000_000 +
-        (b.costCoins || 0);
-      return ca - cb;
-    });
+    return [...items].sort((a, b) => normalizedBuildCost(a) - normalizedBuildCost(b));
   }
 
   subtitle(item) {
@@ -111,9 +102,6 @@ export class ShopUI {
           : Math.round((item.houseBonusScaled / 100) * 100) / 100;
       const infl = item.influenceRadiusTiles != null ? ` · infl. ${item.influenceRadiusTiles}` : "";
       return meta(`${size} · +${pct}%${infl}`);
-    }
-    if (item.happinessBonus != null) {
-      return meta(`${size} · felicidad +${item.happinessBonus}`);
     }
     return meta(size);
   }
@@ -172,10 +160,29 @@ export class ShopUI {
       });
       list.appendChild(zebraBtn);
 
+      const grassBtn = document.createElement("button");
+      grassBtn.type = "button";
+      grassBtn.className = "card" + (this.tool === "grass" ? " selected" : "");
+      grassBtn.innerHTML = `
+        <div class="ph ground-swatch" style="background:#6B8E23" aria-hidden="true"></div>
+        <div class="meta">
+          <div class="name">Hierba</div>
+          <div class="sub">Gratis · bajo edificios</div>
+        </div>
+      `;
+      grassBtn.addEventListener("click", () => {
+        this.selected = null;
+        this.onSelect(null);
+        this.tool = this.tool === "grass" ? null : "grass";
+        this.onTool(this.tool);
+        this.render();
+      });
+      list.appendChild(grassBtn);
+
       const help = document.createElement("p");
       help.style.cssText = "color:#1a5f96;font-size:0.8rem;padding:0.5rem;margin:0;font-weight:600";
       help.innerHTML =
-        "Pinta arrastrando. Recta por defecto; curva / T / cruce solo según vecinos. <strong>Paso de cebra</strong> fija el cruce peatonal. <strong>Mover</strong> reubica edificios; <strong>Borrar</strong> los quita. Clic vacío o Esc cancela la herramienta.";
+        "Pinta arrastrando. <strong>Hierba</strong> se puede poner debajo de edificios ya construidos para tapar el suelo verde. Recta por defecto en carreteras; curva / T / cruce según vecinos. <strong>Borrar</strong> quita carretera, edificio o hierba. Clic vacío o Esc cancela.";
       list.appendChild(help);
       return;
     }

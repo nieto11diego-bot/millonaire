@@ -1,7 +1,27 @@
 /**
  * Hover popup for houses and commerces (Millionaire City style).
  */
-import { STATUS, TIME_SCALE, formatDuration, contractXp, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, wonderGoldReward, wonderDiamondReward, wonderGoldIntervalMs, wonderDiamondIntervalMs } from "../economy.js";
+import {
+  STATUS,
+  TIME_SCALE,
+  formatDuration,
+  houseIncome,
+  houseCollectXp,
+  houseMaxPeople,
+  houseRewardDurationMs,
+  wonderGoldRemainingMs,
+  wonderDiamondRemainingMs,
+  wonderGoldReady,
+  wonderDiamondReady,
+  wonderGoldReward,
+  wonderDiamondReward,
+  isConstructing,
+  buildRemainingMs,
+  buildProgressPct,
+  buildDurationMs,
+  buildPlaceXp,
+  instantBuildCashCost,
+} from "../economy.js";
 import { CASH_ICON, GOLD_ICON, DIAMOND_ICON, formatCash, formatGold, formatDiamonds } from "./money.js";
 
 const ICONS = {
@@ -16,21 +36,53 @@ const ICONS = {
 export class BuildingTooltip {
   /**
    * @param {HTMLElement} root
-   * @param {{ t?: (tid: number, fb: string) => string, getContract?: (id: number) => object|null }} [options]
+   * @param {{
+   *   t?: (tid: number, fb: string) => string,
+   *   onInstantBuild?: (building: object) => void,
+   * }} [options]
    */
   constructor(root, options = {}) {
     this.root = root;
     this.t = options.t || ((_tid, fb) => fb);
-    this.getContract = options.getContract || (() => null);
+    this.onInstantBuild = options.onInstantBuild || null;
     this.building = null;
     /** @type {object|null} catalog def preview */
     this.catalogDef = null;
     this._raf = 0;
     this._key = "";
+    /** Pointer is over the interactive tip (construction finish button). */
+    this.pointerInside = false;
+    this._hideTimer = 0;
 
     root.classList.add("bldg-tip");
     root.hidden = true;
     root.setAttribute("aria-hidden", "true");
+
+    root.addEventListener("pointerenter", () => {
+      this.pointerInside = true;
+      if (this._hideTimer) {
+        clearTimeout(this._hideTimer);
+        this._hideTimer = 0;
+      }
+    });
+    root.addEventListener("pointerleave", () => {
+      this.pointerInside = false;
+      this.scheduleHide(180);
+    });
+    root.addEventListener("click", (e) => {
+      const confirmBtn = e.target.closest("[data-instant-build]");
+      const cancelBtn = e.target.closest("[data-build-cancel]");
+      if (cancelBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.hide();
+        return;
+      }
+      if (!confirmBtn || !this.building || !this.onInstantBuild) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.onInstantBuild(this.building);
+    });
   }
 
   /**
@@ -49,11 +101,16 @@ export class BuildingTooltip {
       this.hide();
       return;
     }
+    if (this._hideTimer) {
+      clearTimeout(this._hideTimer);
+      this._hideTimer = 0;
+    }
     if (this.building !== building) this._key = "";
     this.building = building;
     this.root.hidden = false;
     this.root.setAttribute("aria-hidden", "false");
     this.root.classList.add("visible");
+    this.root.classList.toggle("interactive", isConstructing(building));
     this._position(screenPos);
     this.render();
   }
@@ -65,6 +122,8 @@ export class BuildingTooltip {
    */
   showCatalog(def, screenPos) {
     this.building = null;
+    this.pointerInside = false;
+    this.root.classList.remove("interactive");
     if (
       !def ||
       (def.category !== "house" && def.category !== "commercial" && def.category !== "wonder")
@@ -95,11 +154,25 @@ export class BuildingTooltip {
     }
   }
 
+  scheduleHide(delayMs = 120) {
+    if (this.pointerInside) return;
+    if (this._hideTimer) clearTimeout(this._hideTimer);
+    this._hideTimer = setTimeout(() => {
+      this._hideTimer = 0;
+      if (!this.pointerInside) this.hide();
+    }, delayMs);
+  }
+
   hide() {
+    if (this._hideTimer) {
+      clearTimeout(this._hideTimer);
+      this._hideTimer = 0;
+    }
     this.building = null;
     this.catalogDef = null;
+    this.pointerInside = false;
     this._key = "";
-    this.root.classList.remove("visible", "shop-side");
+    this.root.classList.remove("visible", "shop-side", "interactive");
     this.root.hidden = true;
     this.root.setAttribute("aria-hidden", "true");
   }
@@ -117,7 +190,7 @@ export class BuildingTooltip {
     const isShop = def.category === "commercial";
 
     const name = def.name || "Edificio";
-    const peopleLabel = isHouse ? this.t(371, "Inquilinos") : "Clientes";
+    const peopleLabel = isHouse ? "Población" : "Clientes";
 
     let timeText = "—";
     let progressPct = 0;
@@ -126,30 +199,54 @@ export class BuildingTooltip {
     let cashText = "0";
     let peopleText = "0";
     let statusNote = "";
+    let constructing = false;
+    let instantCost = 0;
+
+    if (isConstructing(rt)) {
+      constructing = true;
+      showTimer = true;
+      const left = buildRemainingMs(rt);
+      timeText = formatTipTime(left);
+      progressPct = buildProgressPct(rt);
+      instantCost = instantBuildCashCost(def, left, rt.buildDurationMs);
+      statusNote = "En construcción";
+      return {
+        kind: isHouse ? "house" : isShop ? "shop" : "wonder",
+        showTimer,
+        timeText,
+        progressPct,
+        xpText,
+        cashText,
+        peopleText,
+        peopleLabel,
+        statusNote,
+        name,
+        constructing,
+        instantCost,
+      };
+    }
 
     if (isHouse) {
-      const contract = rt.contractId != null ? this.getContract(rt.contractId) : null;
+      const people = rt.people || 0;
+      const maxPeople = rt.maxPeople || houseMaxPeople(def);
+      peopleText = `${people}/${maxPeople}`;
+      const projected = houseIncome(def, people, rt.influence || 0);
+      cashText = String(rt.status === STATUS.READY ? rt.lastIncome || projected : projected);
+      xpText = String(houseCollectXp(def, Number(cashText) || 0));
       if (rt.status === STATUS.WAITING && rt.durationMs > 0) {
         showTimer = true;
         timeText = formatTipTime(rt.remainingMs / TIME_SCALE);
         progressPct = Math.max(0, Math.min(100, (1 - rt.remainingMs / rt.durationMs) * 100));
-        xpText = String(contract ? contractXp(contract) : 0);
-        cashText = String(rt.lastIncome ?? 0);
-        peopleText = String(rt.tenants ?? 0);
+        if (people < maxPeople) statusNote = "Población en crecimiento";
       } else if (rt.status === STATUS.READY) {
         showTimer = true;
         timeText = "¡Listo!";
         progressPct = 100;
-        xpText = String(contract ? contractXp(contract) : 0);
-        cashText = String(rt.lastIncome ?? 0);
-        peopleText = String(rt.tenants ?? 0);
         statusNote = "Toca para cobrar";
-      } else if (rt.status === STATUS.LOST) {
-        statusNote = "Toca para firmar de nuevo";
       } else {
         const infl = rt.influence || 0;
         const pct = Math.round((infl / 100) * 10) / 10;
-        statusNote = pct > 0 ? `Bonus +${pct}%` : "Sin contrato";
+        statusNote = pct > 0 ? `Bonus +${pct}%` : "";
       }
     } else if (isShop) {
       peopleText = String(rt.customers ?? 0);
@@ -179,6 +276,8 @@ export class BuildingTooltip {
       peopleLabel,
       statusNote,
       name,
+      constructing,
+      instantCost,
     };
   }
 
@@ -186,6 +285,28 @@ export class BuildingTooltip {
     const def = this.building.def;
     const rt = this.building.runtime || {};
     const name = def.name || "Maravilla";
+
+    if (isConstructing(rt)) {
+      const left = buildRemainingMs(rt);
+      return {
+        kind: "wonder",
+        name,
+        constructing: true,
+        showTimer: true,
+        timeText: formatTipTime(left),
+        progressPct: buildProgressPct(rt),
+        instantCost: instantBuildCashCost(def, left, rt.buildDurationMs),
+        statusNote: "En construcción",
+        goldReady: false,
+        diaReady: false,
+        goldText: "—",
+        diaText: "—",
+        goldAmt: "0",
+        diaAmt: "0",
+        cityPct: "0",
+      };
+    }
+
     const goldReady = wonderGoldReady(rt);
     const diaReady = wonderDiamondReady(rt);
     const goldLeft = wonderGoldRemainingMs(rt);
@@ -203,6 +324,11 @@ export class BuildingTooltip {
     return {
       kind: "wonder",
       name,
+      constructing: false,
+      showTimer: false,
+      timeText: "",
+      progressPct: 0,
+      instantCost: 0,
       goldReady,
       diaReady,
       goldText: goldReady ? "¡Listo!" : formatTipTime(goldLeft),
@@ -228,19 +354,31 @@ export class BuildingTooltip {
         : formatCash(def.costCoins || 0);
     const costIcon = isDiamond ? ICONS.diamond : isGold ? ICONS.gold : ICONS.cash;
     const costRewardClass = isDiamond ? "diamond" : isGold ? "gold" : "cash";
-    const xp = String(def.exp || 0);
+    const xp = String(buildPlaceXp(def));
     const size = `${def.gridW}×${def.gridH}`;
     const level = def.level != null ? String(def.level) : "1";
+    const buildMs = buildDurationMs(def);
+    const buildLabel = buildMs > 0 ? formatDuration(buildMs) : "Instantánea";
 
     let extra = "";
     if (isHouse) {
+      const maxP = houseMaxPeople(def);
+      const reward = formatDuration(houseRewardDurationMs(def));
       extra = `
-        <div class="bldg-tip-status">Firma contratos para alquilar</div>
+        <div class="bldg-tip-status">La población crece sola</div>
         <div class="bldg-tip-tenants">
-          <span class="bldg-tip-tenants-label">Tamaño:</span>
-          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(size)}</span></span>
+          <span class="bldg-tip-tenants-label">Población máx:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(String(maxP))}</span></span>
         </div>
-        <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)}</div>
+        <div class="bldg-tip-tenants">
+          <span class="bldg-tip-tenants-label">Cobro cada:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(reward)}</span></span>
+        </div>
+        <div class="bldg-tip-tenants">
+          <span class="bldg-tip-tenants-label">Construcción:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
+        </div>
+        <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
       `;
     } else if (def.category === "wonder") {
       const cityPct =
@@ -249,79 +387,79 @@ export class BuildingTooltip {
           : def.cityBonusScaled != null
             ? Math.round((def.cityBonusScaled / 100) * 100) / 100
             : 0;
-      const goldEvery = formatDuration(wonderGoldIntervalMs(def));
-      const diaEvery = formatDuration(wonderDiamondIntervalMs(def));
-      const goldAmt = String(wonderGoldReward(def));
-      const diaAmt = String(wonderDiamondReward(def));
       extra = `
         <div class="bldg-tip-status">Bonus ciudad +${escapeHtml(String(cityPct))}%</div>
         <div class="bldg-tip-tenants">
-          <span class="bldg-tip-tenants-label">Oro:</span>
-          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num"><img class="gold-ico gold-ico--inline" src="${ICONS.gold}" alt="" />+${escapeHtml(goldAmt)} / ${escapeHtml(goldEvery)}</span></span>
+          <span class="bldg-tip-tenants-label">Construcción:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
         </div>
-        <div class="bldg-tip-tenants">
-          <span class="bldg-tip-tenants-label">Diamante:</span>
-          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num"><img class="gold-ico gold-ico--inline" src="${ICONS.diamond}" alt="" />+${escapeHtml(diaAmt)} / ${escapeHtml(diaEvery)}</span></span>
-        </div>
-        <div class="bldg-tip-footnote">${escapeHtml(size)} · Nivel ${escapeHtml(level)}</div>
-      `;
-    } else if (def.category === "service") {
-      const bonus = def.happinessBonus != null ? String(def.happinessBonus) : "6";
-      extra = `
-        <div class="bldg-tip-status">Servicio público</div>
-        <div class="bldg-tip-tenants">
-          <span class="bldg-tip-tenants-label">Felicidad:</span>
-          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">+${escapeHtml(bonus)}</span></span>
-        </div>
-        <div class="bldg-tip-footnote">${escapeHtml(size)} · Nivel ${escapeHtml(level)}</div>
+        <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
       `;
     } else {
-      const income = (def.incomeValue || 0).toLocaleString("en-US");
-      const clients = String(def.maxClients ?? "—");
-      const radius = String(def.clientRadiusTiles ?? "—");
-      const cycle =
-        def.incomeTimeSec != null ? formatDuration((def.incomeTimeSec * 1000) / TIME_SCALE) : "—";
       extra = `
+        <div class="bldg-tip-status">Comercio · genera ingresos</div>
         <div class="bldg-tip-tenants">
-          <span class="bldg-tip-tenants-label">Por cliente:</span>
-          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num"><img class="cash-ico cash-ico--inline" src="${ICONS.cash}" alt="" />${escapeHtml(income)}</span></span>
+          <span class="bldg-tip-tenants-label">Construcción:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
         </div>
-        <div class="bldg-tip-tenants">
-          <span class="bldg-tip-tenants-label">Máx. clientes:</span>
-          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(clients)}</span></span>
-        </div>
-        <div class="bldg-tip-tenants">
-          <span class="bldg-tip-tenants-label">Radio:</span>
-          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(radius)}</span></span>
-        </div>
-        <div class="bldg-tip-tenants">
-          <span class="bldg-tip-tenants-label">Ciclo:</span>
-          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(cycle)}</span></span>
-        </div>
-        <div class="bldg-tip-footnote">${escapeHtml(size)} · Nivel ${escapeHtml(level)}</div>
+        <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
       `;
     }
 
-    const key = `cat|${name}|${costRewardClass}|${cost}|${xp}|${size}`;
+    const key = `cat|${name}|${cost}|${xp}|${buildLabel}`;
     if (key === this._key) return;
     this._key = key;
-
     this.root.innerHTML = `
       <div class="bldg-tip-card">
         <div class="bldg-tip-title">${escapeHtml(name)}</div>
         <div class="bldg-tip-body">
           <div class="bldg-tip-rewards">
-            <div class="bldg-tip-reward ${costRewardClass}">
-              <img src="${costIcon}" alt="" />
-              <span>${escapeHtml(cost)}</span>
-            </div>
             <div class="bldg-tip-reward xp">
               <img src="${ICONS.xp}" alt="" />
               <span>${escapeHtml(xp)} XP</span>
             </div>
+            <div class="bldg-tip-reward ${costRewardClass}">
+              <img src="${costIcon}" alt="" />
+              <span>${escapeHtml(cost)}</span>
+            </div>
           </div>
           <div class="bldg-tip-divider"></div>
           ${extra}
+        </div>
+        <div class="bldg-tip-arrow"></div>
+      </div>
+    `;
+  }
+
+  _constructionHtml(m) {
+    const costFmt = formatCash(m.instantCost || 0);
+    return `
+      <div class="bldg-tip-card bldg-tip-card--build">
+        <div class="bldg-tip-title">${escapeHtml(m.name)}</div>
+        <div class="bldg-tip-body">
+          <div class="bldg-tip-status">Construcción rápida</div>
+          <div class="bldg-tip-timer-row">
+            <img class="bldg-tip-ico" src="${ICONS.timer}" alt="" />
+            <div class="bldg-tip-bar">
+              <div class="bldg-tip-bar-fill bldg-tip-bar-fill--build" style="width:${m.progressPct}%"></div>
+              <span class="bldg-tip-bar-text">${escapeHtml(m.timeText)}</span>
+            </div>
+          </div>
+          <div class="bldg-tip-build-cost-row">
+            <span>Coste</span>
+            <span class="bldg-tip-build-cost">
+              <img src="${ICONS.cash}" alt="" />
+              ${escapeHtml(costFmt)}
+            </span>
+          </div>
+          <div class="bldg-tip-build-actions">
+            <button type="button" class="bldg-tip-icon-btn bldg-tip-icon-btn--ok" data-instant-build title="Confirmar" aria-label="Confirmar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13.2 L10 18 L19 7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button type="button" class="bldg-tip-icon-btn bldg-tip-icon-btn--cancel" data-build-cancel title="Cancelar" aria-label="Cancelar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7 L17 17 M17 7 L7 17" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg>
+            </button>
+          </div>
         </div>
         <div class="bldg-tip-arrow"></div>
       </div>
@@ -335,6 +473,27 @@ export class BuildingTooltip {
       return;
     }
     const m = this._model();
+    if (m.constructing) {
+      const key = `build|${m.name}|${m.timeText}|${Math.round(m.progressPct)}|${m.instantCost}`;
+      const fill = this.root.querySelector(".bldg-tip-bar-fill--build");
+      const barText = this.root.querySelector(".bldg-tip-bar-text");
+      const costEl = this.root.querySelector(".bldg-tip-build-cost");
+      if (fill && barText && this._key.startsWith(`build|${m.name}|`)) {
+        fill.style.width = `${m.progressPct}%`;
+        barText.textContent = m.timeText;
+        if (costEl) {
+          costEl.innerHTML = `<img src="${ICONS.cash}" alt="" /> ${escapeHtml(formatCash(m.instantCost || 0))}`;
+        }
+        this._key = key;
+        return;
+      }
+      this._key = key;
+      this.root.classList.add("interactive");
+      this.root.innerHTML = this._constructionHtml(m);
+      return;
+    }
+
+    this.root.classList.remove("interactive");
     const cashFmt = Number(m.cashText).toLocaleString("en-US");
     const key = [
       m.name,
@@ -356,7 +515,8 @@ export class BuildingTooltip {
       barText &&
       this._key &&
       this._key.startsWith(`${m.name}|${m.showTimer ? 1 : 0}|`) &&
-      m.showTimer;
+      m.showTimer &&
+      !this.root.querySelector("[data-instant-build]");
 
     if (sameShell) {
       fill.style.width = `${m.progressPct}%`;
@@ -422,6 +582,27 @@ export class BuildingTooltip {
 
   _renderWonder() {
     const m = this._wonderModel();
+    if (m.constructing) {
+      const key = `build|${m.name}|${m.timeText}|${Math.round(m.progressPct)}|${m.instantCost}`;
+      const fill = this.root.querySelector(".bldg-tip-bar-fill--build");
+      const barText = this.root.querySelector(".bldg-tip-bar-text");
+      const costEl = this.root.querySelector(".bldg-tip-build-cost");
+      if (fill && barText && this._key.startsWith(`build|${m.name}|`)) {
+        fill.style.width = `${m.progressPct}%`;
+        barText.textContent = m.timeText;
+        if (costEl) {
+          costEl.innerHTML = `<img src="${ICONS.cash}" alt="" /> ${escapeHtml(formatCash(m.instantCost || 0))}`;
+        }
+        this._key = key;
+        return;
+      }
+      this._key = key;
+      this.root.classList.add("interactive");
+      this.root.innerHTML = this._constructionHtml(m);
+      return;
+    }
+
+    this.root.classList.remove("interactive");
     const key = [
       "wonder",
       m.name,
@@ -462,7 +643,10 @@ function formatTipTime(msWall) {
   if (m < 60) return `${m} Mins ${rem} Secs`;
   const h = Math.floor(m / 60);
   const mr = m % 60;
-  return `${h} Hrs ${mr} Mins`;
+  if (h < 24) return `${h} Hrs ${mr} Mins`;
+  const d = Math.floor(h / 24);
+  const hr = h % 24;
+  return `${d} Days ${hr} Hrs`;
 }
 
 function escapeHtml(s) {

@@ -1,21 +1,18 @@
 import {
   STATUS,
   TIME_SCALE,
-  LOST_RENT_GRACE_FACTOR,
   createRuntime,
   makeEconomyIndex,
-  groupForHouse,
-  contractCost,
-  contractIncome,
-  contractTenants,
-  contractDurationMs,
   commerceDurationMs,
   commercePayout,
   commerceCollectXp,
-  contractXp,
+  houseIncome,
+  houseCollectXp,
+  houseMaxPeople,
+  houseRewardDurationMs,
+  houseGrowthIntervalMs,
   computeHouseInfluence,
   computeCommerceCustomers,
-  computeCityHappiness,
   isRoadConnected,
   needsRoad,
   wonderGoldIntervalMs,
@@ -25,10 +22,14 @@ import {
   wonderGoldReady,
   wonderDiamondReady,
   wonderAnyReady,
+  isConstructing,
+  buildRemainingMs,
+  instantBuildCashCost,
+  completeConstructionRuntime,
 } from "./economy.js";
 
 /**
- * Simulation ticker for house rent + commerce income + wonder premium resources.
+ * Simulation ticker for house population/rent + commerce income + wonder premiums.
  */
 export class EconomySim {
   /**
@@ -39,24 +40,16 @@ export class EconomySim {
     this.roads = roads;
     this.index = makeEconomyIndex(economy);
     this.onEvent = onEvent;
-    /** @type {{ happiness: number, multiplier: number, services: number, decorations: number, wonders: number, roads: number }} */
-    this.cityHappiness = computeCityHappiness([], roads);
-  }
-
-  get happiness() {
-    return this.cityHappiness?.happiness ?? 0;
-  }
-
-  get happinessMultiplier() {
-    return this.cityHappiness?.multiplier ?? 1;
   }
 
   recomputeAll() {
-    this.cityHappiness = computeCityHappiness(this.grid.buildings, this.roads);
     for (const b of this.grid.buildings) {
       if (!b.runtime) b.runtime = createRuntime(b.def);
-      if (b.def.category === "house") {
+      if (b.def.category === "house" && b.runtime.status !== STATUS.BUILDING) {
         b.runtime.influence = computeHouseInfluence(b, this.grid.buildings);
+        b.runtime.maxPeople = houseMaxPeople(b.def);
+        b.runtime.growthIntervalMs = houseGrowthIntervalMs(b.def);
+        if (b.runtime.people > b.runtime.maxPeople) b.runtime.people = b.runtime.maxPeople;
       }
     }
     for (const b of this.grid.buildings) {
@@ -75,6 +68,12 @@ export class EconomySim {
 
     for (const b of this.grid.buildings) {
       if (!b.runtime) continue;
+
+      if (isConstructing(b)) {
+        dirty = this._tickBuild(b) || dirty;
+        continue;
+      }
+
       const roadOk = !needsRoad(b.def) || isRoadConnected(b, this.roads);
 
       if (b.def.category === "house") {
@@ -88,38 +87,76 @@ export class EconomySim {
     return dirty;
   }
 
+  _tickBuild(b) {
+    const rt = b.runtime;
+    if (!rt || rt.status !== STATUS.BUILDING) return false;
+    if (buildRemainingMs(rt) > 0) return false;
+    this.finishBuild(b);
+    return true;
+  }
+
+  /**
+   * Complete construction (timer finished or paid instant finish).
+   * @returns {{ ok: boolean, reason?: string }}
+   */
+  finishBuild(building) {
+    const rt = building?.runtime;
+    if (!rt || rt.status !== STATUS.BUILDING) return { ok: false, reason: "not_building" };
+    completeConstructionRuntime(building.def, rt);
+    this.onEvent("build_complete", { building });
+    this.recomputeAll();
+    return { ok: true };
+  }
+
+  /**
+   * Cash cost to finish now (based on remaining time).
+   */
+  instantBuildCost(building) {
+    if (!isConstructing(building)) return 0;
+    const rt = building.runtime;
+    return instantBuildCashCost(building.def, buildRemainingMs(rt), rt.buildDurationMs);
+  }
+
   _tickHouse(b, step, roadOk) {
     const rt = b.runtime;
-    if (rt.status !== STATUS.WAITING && rt.status !== STATUS.READY) return false;
+    if (!rt || rt.status === STATUS.BUILDING) return false;
     if (!roadOk) return false;
+
+    let dirty = false;
+
+    // Progressive population growth toward capacity.
+    if ((rt.people || 0) < (rt.maxPeople || 0)) {
+      if (!rt.growthIntervalMs) rt.growthIntervalMs = houseGrowthIntervalMs(b.def);
+      if (rt.growthRemainingMs == null || rt.growthRemainingMs <= 0) {
+        rt.growthRemainingMs = rt.growthIntervalMs;
+      }
+      rt.growthRemainingMs -= step;
+      while (rt.growthRemainingMs <= 0 && rt.people < rt.maxPeople) {
+        rt.people += 1;
+        rt.growthRemainingMs += rt.growthIntervalMs;
+        dirty = true;
+      }
+      if (rt.people >= rt.maxPeople) rt.growthRemainingMs = 0;
+      if (dirty) this.recomputeAll();
+    }
 
     if (rt.status === STATUS.WAITING) {
       rt.remainingMs -= step;
       if (rt.remainingMs <= 0) {
         rt.remainingMs = 0;
         rt.status = STATUS.READY;
-        // Grace period before lost rent
-        rt.remainingMs = rt.durationMs * LOST_RENT_GRACE_FACTOR;
+        rt.influence = computeHouseInfluence(b, this.grid.buildings);
+        rt.lastIncome = houseIncome(b.def, rt.people, rt.influence);
         this.onEvent("rent_ready", { building: b });
-        return true;
-      }
-    } else if (rt.status === STATUS.READY) {
-      rt.remainingMs -= step;
-      if (rt.remainingMs <= 0) {
-        rt.status = STATUS.LOST;
-        rt.remainingMs = 0;
-        rt.contractId = null;
-        rt.tenants = 0;
-        this.onEvent("rent_lost", { building: b });
-        this.recomputeAll();
-        return true;
+        dirty = true;
       }
     }
-    return false;
+    return dirty;
   }
 
   _tickCommerce(b, step, roadOk) {
     const rt = b.runtime;
+    if (rt.status === STATUS.BUILDING) return false;
     if (!roadOk) return false;
     if (rt.status === STATUS.READY) return false;
 
@@ -134,7 +171,7 @@ export class EconomySim {
       rt.remainingMs = 0;
       rt.status = STATUS.READY;
       rt.customers = computeCommerceCustomers(b, this.grid.buildings);
-      rt.lastPayout = commercePayout(b.def, rt.customers, this.happiness);
+      rt.lastPayout = commercePayout(b.def, rt.customers);
       this.onEvent("commerce_ready", { building: b });
       return true;
     }
@@ -143,7 +180,7 @@ export class EconomySim {
 
   _tickWonder(b) {
     const rt = b.runtime;
-    if (!rt) return false;
+    if (!rt || rt.status === STATUS.BUILDING) return false;
     const now = Date.now();
     let dirty = false;
     if (!rt.goldNotified && wonderGoldReady(rt, now)) {
@@ -160,83 +197,6 @@ export class EconomySim {
   }
 
   /**
-   * Preview all contracts for a house.
-   */
-  previewContracts(building) {
-    const group = groupForHouse(building.def, this.index);
-    const infl = building.runtime?.influence ?? 0;
-    const happy = this.happiness;
-    const n = this.index.contracts.length;
-    return this.index.contracts
-      .map((c) => ({
-        contract: c,
-        group,
-        cost: contractCost(c, group),
-        income: contractIncome(c, group, infl, happy),
-        tenants: contractTenants(c, group),
-        xp: contractXp(c, n),
-        durationMs: contractDurationMs(c),
-        influence: infl,
-        happiness: happy,
-      }))
-      .sort((a, b) => a.cost - b.cost || a.contract.id - b.contract.id);
-  }
-
-  canSign(building) {
-    if (building.def.category !== "house") return false;
-    if (!building.runtime) return false;
-    const st = building.runtime.status;
-    if (st !== STATUS.IDLE && st !== STATUS.LOST) return false;
-    if (needsRoad(building.def) && !isRoadConnected(building, this.roads)) return false;
-    return true;
-  }
-
-  /**
-   * @returns {{ ok: boolean, reason?: string, cost?: number, xp?: number }}
-   */
-  signContract(building, contractId, cash) {
-    if (building.def.category !== "house") return { ok: false, reason: "no_house" };
-    if (!building.runtime) building.runtime = createRuntime(building.def);
-    const rt = building.runtime;
-    if (rt.status !== STATUS.IDLE && rt.status !== STATUS.LOST) {
-      return { ok: false, reason: "busy" };
-    }
-    if (needsRoad(building.def) && !isRoadConnected(building, this.roads)) {
-      return { ok: false, reason: "no_road" };
-    }
-    const contract = this.index.contractById[contractId];
-    if (!contract) return { ok: false, reason: "bad_contract" };
-    const group = groupForHouse(building.def, this.index);
-    const cost = contractCost(contract, group);
-    if (cash < cost) return { ok: false, reason: "no_cash", cost };
-
-    rt.influence = computeHouseInfluence(building, this.grid.buildings);
-    const income = contractIncome(contract, group, rt.influence, this.happiness);
-    const tenants = contractTenants(contract, group);
-    const durationMs = contractDurationMs(contract);
-
-    rt.status = STATUS.WAITING;
-    rt.contractId = contract.id;
-    rt.durationMs = durationMs;
-    rt.remainingMs = durationMs;
-    rt.tenants = tenants;
-    rt.lastIncome = income;
-
-    this.recomputeAll();
-    const xp = contractXp(contract, this.index.contracts.length);
-    this.onEvent("contract_signed", {
-      building,
-      contract,
-      cost,
-      xp,
-      income,
-      tenants,
-      happiness: this.happiness,
-    });
-    return { ok: true, cost, xp, income, tenants };
-  }
-
-  /**
    * @returns {{ ok: boolean, cash?: number, xp?: number, reason?: string }}
    */
   collectRent(building) {
@@ -244,35 +204,24 @@ export class EconomySim {
     const rt = building.runtime;
     if (!rt || rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
-    const contract = this.index.contractById[rt.contractId];
-    const group = groupForHouse(building.def, this.index);
     rt.influence = computeHouseInfluence(building, this.grid.buildings);
-    const cash = contract
-      ? contractIncome(contract, group, rt.influence, this.happiness)
-      : rt.lastIncome || 0;
-    const xp = contract ? contractXp(contract, this.index.contracts.length) : 0;
+    const cash = houseIncome(building.def, rt.people, rt.influence);
+    const xp = houseCollectXp(building.def, cash);
 
-    rt.status = STATUS.IDLE;
-    rt.contractId = null;
-    rt.remainingMs = 0;
-    rt.durationMs = 0;
-    rt.tenants = 0;
-    rt.lastIncome = 0;
+    const durationMs = houseRewardDurationMs(building.def);
+    rt.status = STATUS.WAITING;
+    rt.durationMs = durationMs;
+    rt.remainingMs = durationMs;
+    rt.lastIncome = cash;
 
     this.recomputeAll();
-    this.onEvent("rent_collected", { building, cash, xp, happiness: this.happiness });
+    this.onEvent("rent_collected", {
+      building,
+      cash,
+      xp,
+      people: rt.people,
+    });
     return { ok: true, cash, xp };
-  }
-
-  /**
-   * Clear lost state so player can sign again.
-   */
-  clearLost(building) {
-    if (!building.runtime || building.runtime.status !== STATUS.LOST) return false;
-    building.runtime.status = STATUS.IDLE;
-    building.runtime.contractId = null;
-    building.runtime.tenants = 0;
-    return true;
   }
 
   collectCommerce(building) {
@@ -281,7 +230,7 @@ export class EconomySim {
     if (!rt || rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
     rt.customers = computeCommerceCustomers(building, this.grid.buildings);
-    const cash = commercePayout(building.def, rt.customers, this.happiness);
+    const cash = commercePayout(building.def, rt.customers);
     const xp = commerceCollectXp(building.def, cash);
     rt.lastPayout = cash;
     rt.status = STATUS.WAITING;
@@ -293,7 +242,6 @@ export class EconomySim {
       cash,
       xp,
       customers: rt.customers,
-      happiness: this.happiness,
     });
     return { ok: true, cash, xp, customers: rt.customers };
   }
@@ -330,17 +278,16 @@ export class EconomySim {
 
   /**
    * Resolve tap on a building → action hint for UI.
-   * @returns {"open_contracts"|"collect_rent"|"clear_lost"|"collect_commerce"|"collect_wonder"|"noop"}
+   * @returns {"collect_rent"|"collect_commerce"|"collect_wonder"|"finish_build"|"noop"}
    */
   tapAction(building) {
     if (!building?.runtime) return "noop";
+    if (isConstructing(building)) return "finish_build";
     const cat = building.def.category;
     const st = building.runtime.status;
     if (cat === "house") {
       if (st === STATUS.READY) return "collect_rent";
-      if (st === STATUS.LOST) return "clear_lost";
-      if (st === STATUS.IDLE) return "open_contracts";
-      return "noop"; // waiting
+      return "noop";
     }
     if (cat === "commercial") {
       if (st === STATUS.READY) return "collect_commerce";

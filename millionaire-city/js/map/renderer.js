@@ -15,10 +15,15 @@ export class Renderer {
     this.grid = grid;
     /** @type {import("./roads.js").RoadLayer|null} */
     this.roads = roads;
+    /** @type {import("./ground.js").GroundLayer|null} */
+    this.ground = null;
     this.camera = { x: 0, y: 0, zoom: 1 };
     /** @type {Map<string, HTMLImageElement>} */
     this.images = new Map();
     this.hover = null; // { tx, ty, def, valid } | { tx, ty, road: true, valid }
+    /** Footprint perimeter highlight for move / erase hover. */
+    /** @type {{ tx: number, ty: number, gridW: number, gridH: number, kind: "move"|"erase" } | null} */
+    this.highlight = null;
     /** @type {{ tx: number, ty: number, def: object } | null} */
     this.radiusFocus = null;
     /** @type {import("./zeppelin.js").ZeppelinFlyer|null} */
@@ -168,7 +173,7 @@ export class Renderer {
     ctx.scale(z, z);
     ctx.translate(-mapW / 2 - this.camera.x, -mapH / 2 - this.camera.y);
 
-    // Ground
+    // Base grass (suelo normal)
     ctx.fillStyle = this._ensureGrassPattern() || "#7BA73B";
     ctx.fillRect(0, 0, mapW, mapH);
 
@@ -214,8 +219,37 @@ export class Renderer {
       }
     }
 
-    // Ghost placement
-    if (this.hover && this.hover.road) {
+    // Grass tool: above base grass (+ roads), strictly under buildings
+    if (this.ground) {
+      for (let ty = 0; ty < rows; ty++) {
+        for (let tx = 0; tx < cols; tx++) {
+          const color = this.ground.colorAt(tx, ty);
+          if (!color) continue;
+          if (this.river?.has(tx, ty)) continue;
+          // Keep roads visible on the same tile
+          if (this.roads?.has(tx, ty)) continue;
+          ctx.fillStyle = color;
+          ctx.fillRect(tx * tile, ty * tile, tile, tile);
+        }
+      }
+    }
+
+    // Ghost placement (previews under building sprites when applicable)
+    if (this.hover && this.hover.ground) {
+      const { tx, ty, valid, color } = this.hover;
+      if (valid && color) {
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = color;
+        ctx.fillRect(tx * tile, ty * tile, tile, tile);
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillStyle = "rgba(224,122,95,0.4)";
+        ctx.fillRect(tx * tile, ty * tile, tile, tile);
+      }
+      ctx.strokeStyle = valid ? "#fff" : "#e07a5f";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(tx * tile + 1, ty * tile + 1, tile - 2, tile - 2);
+    } else if (this.hover && this.hover.road) {
       const { tx, ty, valid } = this.hover;
       ctx.fillStyle = valid ? "rgba(80,80,80,0.45)" : "rgba(224,122,95,0.4)";
       ctx.fillRect(tx * tile, ty * tile, tile, tile);
@@ -249,9 +283,12 @@ export class Renderer {
 
     for (const b of sorted) {
       if (hideId && b.id === hideId) continue;
-      this._drawBuilding(b.def, b.tx, b.ty, 1);
+      const constructing = b.runtime?.status === "building";
+      this._drawBuilding(b.def, b.tx, b.ty, constructing ? 0.72 : 1);
       this._drawStatus(b);
     }
+
+    this._drawHighlight();
 
     this.floatingRewards.draw(ctx);
 
@@ -277,6 +314,41 @@ export class Renderer {
     const mapH = this.grid.rows * this.grid.tile;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(layer, 0, 0, mapW, mapH);
+  }
+
+  /** Perimeter outline for the building under Move / Destroy tools. */
+  _drawHighlight() {
+    const h = this.highlight;
+    if (!h) return;
+    const ctx = this.ctx;
+    const tile = this.grid.tile;
+    const x = h.tx * tile;
+    const y = h.ty * tile;
+    const w = h.gridW * tile;
+    const hh = h.gridH * tile;
+    const erase = h.kind === "erase";
+    const stroke = erase ? "#e07a5f" : "#3db89a";
+    const fill = erase ? "rgba(224,122,95,0.16)" : "rgba(61,184,154,0.14)";
+    const t = performance.now();
+    const pulse = 0.72 + Math.sin(t / 260) * 0.28;
+
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, hh);
+
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(0,0,0,0.4)";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, hh - 3);
+
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([10, 6]);
+    ctx.lineDashOffset = -(t / 45) % 16;
+    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, hh - 3);
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+    ctx.globalAlpha = 1;
   }
 
   /** Locked parcels (fog) + adjacent For Sale signs. */
@@ -434,6 +506,39 @@ export class Renderer {
     const { drawY: spriteTop } = spriteOrigin(b.def, b.tx, b.ty, tile);
     const st = rt.status;
 
+    // Construction progress (houses / commerces / wonders)
+    if (st === "building" && rt.buildDurationMs > 0) {
+      const left = Math.max(0, (rt.buildEndsAt || 0) - Date.now());
+      const pct = 1 - left / rt.buildDurationMs;
+      const bw = Math.max(28, b.def.gridW * tile * 0.75);
+      const bh = 6;
+      const bx = cx - bw / 2;
+      const by = spriteTop - 12;
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+      ctx.fillStyle = "#1a2329";
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = "#f0c14a";
+      ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, pct)), bh);
+
+      const r = 11;
+      ctx.beginPath();
+      ctx.arc(cx, by - 14, r, 0, Math.PI * 2);
+      ctx.fillStyle = "#c4a35a";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("🔨", cx, by - 13.5);
+      ctx.textAlign = "start";
+      ctx.textBaseline = "alphabetic";
+      return;
+    }
+
     // Wonder premium collect badges (gold / diamond can both be ready)
     if (b.def.category === "wonder") {
       const now = Date.now();
@@ -483,14 +588,8 @@ export class Renderer {
     let label = null;
     let color = "#3db89a";
     let spriteUrl = null;
-    if (st === "idle" && b.def.category === "house") {
-      label = "📋";
-      color = "#6a8aa8";
-    } else if (st === "ready") {
+    if (st === "ready") {
       spriteUrl = "assets/ui/icon_cash.png";
-    } else if (st === "lost") {
-      label = "!";
-      color = "#e07a5f";
     } else if (st === "waiting" && b.def.category === "commercial" && (rt.customers || 0) === 0) {
       label = "0";
       color = "#9ab0b8";
@@ -503,14 +602,29 @@ export class Renderer {
     if (spriteUrl) {
       const img = this.images.get(spriteUrl);
       if (img) {
-        const w = 30 * iconScale * 2;
+        // Collect cue (cash wad) — slightly smaller so it doesn't dwarf the building
+        const w = 30 * iconScale * 1.55;
         const h = (img.height / img.width) * w;
         // Soft bob so the collect cue reads like the original game
-        const bob = Math.sin(performance.now() / 280) * 3.5;
-        ctx.drawImage(img, cx - w / 2, badgeY - h + bob, w, h);
+        const t = performance.now() / 280;
+        const bob = Math.sin(t) * 3.5;
+        const x = cx - w / 2;
+        const y = badgeY - h + bob;
+        // Golden glowing border (outer soft glow + crisp rim)
+        const pulse = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t));
+        ctx.save();
+        ctx.shadowColor = `rgba(255, 220, 70, ${0.85 * pulse})`;
+        ctx.shadowBlur = 14 + 6 * pulse;
+        ctx.drawImage(img, x, y, w, h);
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = `rgba(255, 245, 180, ${0.95 * pulse})`;
+        ctx.drawImage(img, x, y, w, h);
+        ctx.restore();
+        ctx.drawImage(img, x, y, w, h);
       }
     } else if (label) {
       const r = 10 * iconScale;
+      const fontPx = 11 * iconScale;
       ctx.beginPath();
       ctx.arc(cx, badgeY, r, 0, Math.PI * 2);
       ctx.fillStyle = color;
@@ -519,7 +633,7 @@ export class Renderer {
       ctx.lineWidth = 1 * iconScale;
       ctx.stroke();
       ctx.fillStyle = "#fff";
-      ctx.font = `bold ${11 * iconScale}px sans-serif`;
+      ctx.font = `bold ${fontPx}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(label, cx, badgeY + 0.5 * iconScale);
