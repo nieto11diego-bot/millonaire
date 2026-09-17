@@ -809,7 +809,7 @@ html, body {
 }
 
 .dock-glyph.pan {
-  background-image: url("../assets/ui/icon_hand.png");
+  background-image: url("../assets/ui/icon_hand.svg");
   background-size: cover;
   border-radius: 50%;
   filter: none;
@@ -834,6 +834,14 @@ html, body {
 
 .dock-glyph.erase {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='34' width='28' height='14' rx='2' fill='%23f0d24a' stroke='%231a5f96' stroke-width='2'/%3E%3Cpath fill='%23f5c542' stroke='%231a5f96' stroke-width='2' d='M36 20 h14 l6 14 H42Z'/%3E%3Ccircle cx='18' cy='48' r='5' fill='%23333'/%3E%3Ccircle cx='34' cy='48' r='5' fill='%23333'/%3E%3C/svg%3E");
+}
+
+.dock-glyph.new-game {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='5' stroke-linecap='round' stroke-linejoin='round' d='M14 32a18 18 0 1 0 6-13'/%3E%3Cpath fill='%23fff' d='M10 12 L22 14 L14 24 Z'/%3E%3C/svg%3E");
+}
+
+.dock-btn--danger:hover {
+  filter: brightness(1.05);
 }
 
 .workspace { display: contents; }

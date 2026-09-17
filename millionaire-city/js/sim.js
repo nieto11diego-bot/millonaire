@@ -9,6 +9,7 @@ import {
   houseRewardDurationMs,
   houseGrowthIntervalMs,
   computeHouseInfluence,
+  computeCommerceInfluence,
   commerceCycleReward,
   commerceCollectXp,
   commerceRewardDurationMs,
@@ -44,11 +45,20 @@ export class EconomySim {
   recomputeAll() {
     for (const b of this.grid.buildings) {
       if (!b.runtime) b.runtime = createRuntime(b.def);
-      if (b.def.category === "house" && b.runtime.status !== STATUS.BUILDING) {
+      if (b.runtime.status === STATUS.BUILDING) continue;
+      if (b.def.category === "house") {
         b.runtime.influence = computeHouseInfluence(b, this.grid.buildings);
         b.runtime.maxPeople = houseMaxPeople(b.def);
         b.runtime.growthIntervalMs = houseGrowthIntervalMs(b.def);
         if (b.runtime.people > b.runtime.maxPeople) b.runtime.people = b.runtime.maxPeople;
+        if (b.runtime.status === STATUS.READY) {
+          b.runtime.lastIncome = houseIncome(b.def, b.runtime.people, b.runtime.influence);
+        }
+      } else if (b.def.category === "commercial") {
+        b.runtime.influence = computeCommerceInfluence(b, this.grid.buildings);
+        if (b.runtime.status === STATUS.READY) {
+          b.runtime.lastIncome = commerceCycleReward(b.def, b.runtime.influence);
+        }
       }
     }
   }
@@ -163,7 +173,8 @@ export class EconomySim {
     if (rt.remainingMs <= 0) {
       rt.remainingMs = 0;
       rt.status = STATUS.READY;
-      rt.lastIncome = commerceCycleReward(b.def);
+      rt.influence = computeCommerceInfluence(b, this.grid.buildings);
+      rt.lastIncome = commerceCycleReward(b.def, rt.influence);
       this.onEvent("commerce_ready", { building: b });
       return true;
     }
@@ -224,7 +235,8 @@ export class EconomySim {
     const rt = building.runtime;
     if (!rt || rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
-    const cash = commerceCycleReward(building.def);
+    rt.influence = computeCommerceInfluence(building, this.grid.buildings);
+    const cash = commerceCycleReward(building.def, rt.influence);
     const xp = commerceCollectXp(building.def, cash);
     const durationMs = commerceRewardDurationMs(building.def);
     rt.lastIncome = cash;
@@ -232,6 +244,7 @@ export class EconomySim {
     rt.durationMs = durationMs;
     rt.remainingMs = durationMs;
 
+    this.recomputeAll();
     this.onEvent("commerce_collected", { building, cash, xp });
     return { ok: true, cash, xp };
   }

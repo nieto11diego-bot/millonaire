@@ -233,7 +233,9 @@ export class BuildingTooltip {
       const people = rt.people || 0;
       const maxPeople = rt.maxPeople || houseMaxPeople(def);
       peopleText = `${people}/${maxPeople}`;
-      const projected = houseIncome(def, people, rt.influence || 0);
+      const infl = rt.influence || 0;
+      const bonusPct = Math.round((infl / 100) * 10) / 10;
+      const projected = houseIncome(def, people, infl);
       cashText = String(rt.status === STATUS.READY ? rt.lastIncome || projected : projected);
       xpText = String(houseCollectXp(def, Number(cashText) || 0));
       if (rt.status === STATUS.WAITING && rt.durationMs > 0) {
@@ -246,16 +248,29 @@ export class BuildingTooltip {
         timeText = "¡Listo!";
         progressPct = 100;
         statusNote = "Toca para cobrar";
-      } else {
-        const infl = rt.influence || 0;
-        const pct = Math.round((infl / 100) * 10) / 10;
-        statusNote = pct > 0 ? `Bonus +${pct}%` : "";
       }
+      return {
+        kind: "house",
+        showTimer,
+        timeText,
+        progressPct,
+        xpText,
+        cashText,
+        peopleText,
+        peopleLabel,
+        statusNote,
+        bonusPct,
+        name,
+        constructing,
+        instantCost,
+      };
     } else if (isShop) {
-      const projected = commerceCycleReward(def);
+      const projected = commerceCycleReward(def, rt.influence || 0);
       cashText = String(rt.status === STATUS.READY ? rt.lastIncome || projected : projected);
       xpText = String(commerceCollectXp(def, Number(cashText) || 0));
       peopleText = formatDuration(commerceRewardDurationMs(def));
+      const infl = rt.influence || 0;
+      const bonusPct = Math.round((infl / 100) * 10) / 10;
       if (rt.status === STATUS.WAITING && rt.durationMs > 0) {
         showTimer = true;
         timeText = formatTipTime(rt.remainingMs / TIME_SCALE);
@@ -266,10 +281,25 @@ export class BuildingTooltip {
         progressPct = 100;
         statusNote = "Toca para cobrar";
       }
+      return {
+        kind: "shop",
+        showTimer,
+        timeText,
+        progressPct,
+        xpText,
+        cashText,
+        peopleText,
+        peopleLabel,
+        statusNote,
+        bonusPct,
+        name,
+        constructing,
+        instantCost,
+      };
     }
 
     return {
-      kind: isHouse ? "house" : isShop ? "shop" : "other",
+      kind: "other",
       showTimer,
       timeText,
       progressPct,
@@ -278,6 +308,7 @@ export class BuildingTooltip {
       peopleText,
       peopleLabel,
       statusNote,
+      bonusPct: 0,
       name,
       constructing,
       instantCost,
@@ -306,7 +337,7 @@ export class BuildingTooltip {
         diaText: "—",
         goldAmt: "0",
         diaAmt: "0",
-        cityPct: "0",
+        bonusPct: "0",
       };
     }
 
@@ -316,11 +347,11 @@ export class BuildingTooltip {
     const diaLeft = wonderDiamondRemainingMs(rt);
     const goldAmt = wonderGoldReward(def);
     const diaAmt = wonderDiamondReward(def);
-    const cityPct =
-      def.cityBonusPercentApprox != null
-        ? def.cityBonusPercentApprox
-        : def.cityBonusScaled != null
-          ? Math.round((def.cityBonusScaled / 100) * 100) / 100
+    const bonusPct =
+      def.rewardBonusPercentApprox != null
+        ? def.rewardBonusPercentApprox
+        : def.rewardBonusScaled != null
+          ? Math.round((def.rewardBonusScaled / 100) * 100) / 100
           : 0;
     let statusNote = "";
     if (goldReady || diaReady) statusNote = "Toca para cobrar";
@@ -338,7 +369,7 @@ export class BuildingTooltip {
       diaText: diaReady ? "¡Listo!" : formatTipTime(diaLeft),
       goldAmt: String(goldAmt),
       diaAmt: String(diaAmt),
-      cityPct: String(cityPct),
+      bonusPct: String(bonusPct),
       statusNote,
     };
   }
@@ -384,19 +415,21 @@ export class BuildingTooltip {
         <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
       `;
     } else if (def.category === "wonder") {
-      const cityPct =
-        def.cityBonusPercentApprox != null
-          ? def.cityBonusPercentApprox
-          : def.cityBonusScaled != null
-            ? Math.round((def.cityBonusScaled / 100) * 100) / 100
+      const pct =
+        def.rewardBonusPercentApprox != null
+          ? def.rewardBonusPercentApprox
+          : def.rewardBonusScaled != null
+            ? Math.round((def.rewardBonusScaled / 100) * 100) / 100
             : 0;
+      const radio =
+        def.influenceRadiusTiles != null ? ` · radio ${def.influenceRadiusTiles}` : "";
       extra = `
-        <div class="bldg-tip-status">Bonus ciudad +${escapeHtml(String(cityPct))}%</div>
+        <div class="bldg-tip-status">+${escapeHtml(String(pct))}% casas y comercios${escapeHtml(radio)}</div>
         <div class="bldg-tip-tenants">
           <span class="bldg-tip-tenants-label">Construcción:</span>
           <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
         </div>
-        <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
+        <div class="bldg-tip-footnote">También produce oro y diamantes</div>
       `;
     } else if (def.category === "commercial") {
       const reward = formatDuration(commerceRewardDurationMs(def));
@@ -516,6 +549,7 @@ export class BuildingTooltip {
 
     this.root.classList.remove("interactive");
     const cashFmt = Number(m.cashText).toLocaleString("en-US");
+    const bonusPctFmt = Number(m.bonusPct || 0).toLocaleString("en-US", { maximumFractionDigits: 1 });
     const key = [
       m.name,
       m.showTimer ? 1 : 0,
@@ -526,6 +560,7 @@ export class BuildingTooltip {
       m.peopleText,
       m.peopleLabel,
       m.statusNote,
+      bonusPctFmt,
     ].join("|");
     if (key === this._key) return;
 
@@ -545,9 +580,11 @@ export class BuildingTooltip {
       const xp = this.root.querySelector(".bldg-tip-reward.xp span");
       const cash = this.root.querySelector(".bldg-tip-reward.cash span");
       const peopleNum = this.root.querySelector(".bldg-tip-tenants-num");
+      const bonusEl = this.root.querySelector(".bldg-tip-bonus-num");
       if (xp) xp.textContent = `${m.xpText} XP`;
       if (cash) cash.textContent = cashFmt;
       if (peopleNum) peopleNum.textContent = m.peopleText;
+      if (bonusEl) bonusEl.textContent = `+${bonusPctFmt}%`;
       const note = this.root.querySelector(".bldg-tip-footnote");
       if (note) note.textContent = m.statusNote;
       this._key = key;
@@ -588,6 +625,12 @@ export class BuildingTooltip {
             <span class="bldg-tip-tenants-val">
               <span class="bldg-tip-tenants-num">${escapeHtml(m.peopleText)}</span>
               ${m.kind === "shop" ? "" : `<img src="${ICONS.people}" alt="" />`}
+            </span>
+          </div>
+          <div class="bldg-tip-tenants">
+            <span class="bldg-tip-tenants-label">Bonus:</span>
+            <span class="bldg-tip-tenants-val">
+              <span class="bldg-tip-tenants-num bldg-tip-bonus-num">+${escapeHtml(bonusPctFmt)}%</span>
             </span>
           </div>
           ${
@@ -631,6 +674,7 @@ export class BuildingTooltip {
       m.diaText,
       m.goldReady ? 1 : 0,
       m.diaReady ? 1 : 0,
+      m.bonusPct,
       m.statusNote,
     ].join("|");
     if (key === this._key) return;
@@ -648,7 +692,7 @@ export class BuildingTooltip {
             <span class="bldg-tip-tenants-label">Diamante (+${escapeHtml(m.diaAmt)}):</span>
             <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num"><img class="gold-ico gold-ico--inline" src="${ICONS.diamond}" alt="" />${escapeHtml(m.diaText)}</span></span>
           </div>
-          <div class="bldg-tip-footnote">Bonus ciudad +${escapeHtml(m.cityPct)}%</div>
+          <div class="bldg-tip-footnote">+${escapeHtml(m.bonusPct)}% casas y comercios en radio</div>
         </div>
         <div class="bldg-tip-arrow"></div>
       </div>

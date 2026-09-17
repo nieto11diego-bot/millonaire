@@ -178,16 +178,25 @@ export function houseRewardRatePerChunk(def) {
   return rate;
 }
 
+/** Global cash payout scale for houses and commerces (1 = full, 0.5 = half). */
+export const CASH_REWARD_SCALE = 0.5;
+
 /** Full-occupancy cash before influence (override with def.rewardCash). */
 export function houseFullCycleReward(def) {
-  if (def?.rewardCash != null) return Math.max(0, Math.round(def.rewardCash));
-  const durationSec = houseRewardDurationMs(def) / 1000;
-  const chunks = durationSec / HOUSE_REWARD_RATE.chunkSec;
-  return Math.max(1, Math.round(chunks * houseRewardRatePerChunk(def)));
+  let cash;
+  if (def?.rewardCash != null) cash = Math.max(0, Math.round(def.rewardCash));
+  else {
+    const durationSec = houseRewardDurationMs(def) / 1000;
+    const chunks = durationSec / HOUSE_REWARD_RATE.chunkSec;
+    cash = Math.max(1, Math.round(chunks * houseRewardRatePerChunk(def)));
+  }
+  return Math.max(0, Math.round(cash * CASH_REWARD_SCALE));
 }
 
 export function houseRentPerPerson(def) {
-  if (def?.rentPerPerson != null) return Math.max(1, Math.round(def.rentPerPerson));
+  if (def?.rentPerPerson != null) {
+    return Math.max(1, Math.round(def.rentPerPerson * CASH_REWARD_SCALE));
+  }
   const max = houseMaxPeople(def);
   return Math.max(1, Math.round(houseFullCycleReward(def) / Math.max(1, max)));
 }
@@ -261,15 +270,25 @@ export function commerceRewardRatePerChunk(def) {
   );
 }
 
-/** Cash granted when collecting a finished commerce cycle. */
-export function commerceCycleReward(def) {
-  if (def?.rewardCash != null) return Math.max(0, Math.round(def.rewardCash));
-  const durationSec = commerceRewardDurationMs(def) / 1000;
-  const chunks = durationSec / COMMERCE_REWARD.chunkSec;
-  const base = Math.max(COMMERCE_REWARD.minCash, Math.round(chunks * commerceRewardRatePerChunk(def)));
-  const factor = def?.rewardFactor != null ? Number(def.rewardFactor) : 1;
-  if (!(factor > 0) || factor === 1) return base;
-  return Math.max(COMMERCE_REWARD.minCash, Math.round(base * factor));
+/** Cash granted when collecting a finished commerce cycle (before wonder bonus). */
+export function commerceBaseReward(def) {
+  let cash;
+  if (def?.rewardCash != null) {
+    cash = Math.max(0, Math.round(def.rewardCash));
+  } else {
+    const durationSec = commerceRewardDurationMs(def) / 1000;
+    const chunks = durationSec / COMMERCE_REWARD.chunkSec;
+    cash = Math.max(COMMERCE_REWARD.minCash, Math.round(chunks * commerceRewardRatePerChunk(def)));
+    const factor = def?.rewardFactor != null ? Number(def.rewardFactor) : 1;
+    if (factor > 0 && factor !== 1) cash = Math.max(COMMERCE_REWARD.minCash, Math.round(cash * factor));
+  }
+  return Math.max(0, Math.round(cash * CASH_REWARD_SCALE));
+}
+
+/** Commerce payout with wonder influence (same scale as houses: 100 ≈ 1%). */
+export function commerceCycleReward(def, influenceScaled = 0) {
+  const base = commerceBaseReward(def);
+  return Math.floor((base * ((influenceScaled || 0) + 10000)) / 10000);
 }
 
 export function commerceCollectXp(_def, cash) {
@@ -282,6 +301,7 @@ export function makeCommerceRuntime(def) {
     status: STATUS.WAITING,
     durationMs,
     remainingMs: durationMs,
+    influence: 0,
     lastIncome: 0,
   };
 }
@@ -346,9 +366,33 @@ export function distanceTiles(a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+/** Gap between two footprints (0 if they touch or overlap). */
+export function footprintEdgeDistance(a, b) {
+  const ax0 = a.tx;
+  const ay0 = a.ty;
+  const ax1 = a.tx + a.def.gridW;
+  const ay1 = a.ty + a.def.gridH;
+  const bx0 = b.tx;
+  const by0 = b.ty;
+  const bx1 = b.tx + b.def.gridW;
+  const by1 = b.ty + b.def.gridH;
+  const dx = Math.max(0, ax0 - bx1, bx0 - ax1);
+  const dy = Math.max(0, ay0 - by1, by0 - ay1);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * Influence check: edge-to-edge distance vs raw influenceRadiusTiles.
+ * (Center-to-center missed adjacent 2x2 houses next to 1x1 decorations.)
+ */
 export function inRadius(source, target, radiusTiles) {
   if (radiusTiles == null) return false;
-  return distanceTiles(source, target) <= radiusTiles;
+  return footprintEdgeDistance(source, target) <= radiusTiles;
+}
+
+export function influenceRadiusOf(def) {
+  if (!def || def.influenceRadiusTiles == null || def.influenceRadiusTiles < 0) return null;
+  return def.influenceRadiusTiles;
 }
 
 export function createRuntime(def, opts = {}) {
@@ -565,14 +609,29 @@ export function computeHouseInfluence(house, buildings) {
     if (b.id === house.id) continue;
     if (isConstructing(b)) continue;
     const d = b.def;
-    if (d.category === "wonder" && d.cityBonusScaled) {
-      scaled += d.cityBonusScaled;
+    if (d.category === "wonder" && d.rewardBonusScaled) {
+      const r = influenceRadiusOf(d);
+      if (r != null && inRadius(b, house, r)) scaled += d.rewardBonusScaled;
       continue;
     }
     if (d.category === "decoration" && d.houseBonusScaled) {
-      const r = effectiveRadiusTiles(d);
+      const r = influenceRadiusOf(d);
       if (r != null && inRadius(b, house, r)) scaled += d.houseBonusScaled;
     }
+  }
+  return scaled;
+}
+
+/** Wonder bonuses in radius that boost commerce cycle payouts. */
+export function computeCommerceInfluence(shop, buildings) {
+  let scaled = 0;
+  for (const b of buildings) {
+    if (b.id === shop.id) continue;
+    if (isConstructing(b)) continue;
+    const d = b.def;
+    if (d.category !== "wonder" || !d.rewardBonusScaled) continue;
+    const r = influenceRadiusOf(d);
+    if (r != null && inRadius(b, shop, r)) scaled += d.rewardBonusScaled;
   }
   return scaled;
 }

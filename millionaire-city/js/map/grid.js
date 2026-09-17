@@ -97,6 +97,46 @@ export class Grid {
     this.buildings = this.buildings.filter((x) => x.id !== b.id);
     return b;
   }
+
+  /** Remove all buildings (keeps grid size). */
+  clear() {
+    this.cells.fill(null);
+    this.buildings = [];
+    this._nextId = 1;
+  }
+
+  /**
+   * Place from a save slot (preserves id + runtime).
+   * @param {object} def
+   * @param {number} tx
+   * @param {number} ty
+   * @param {{ id?: string, runtime?: object|null }} [opts]
+   */
+  placeSaved(def, tx, ty, opts = {}) {
+    const w = def.gridW;
+    const h = def.gridH;
+    if (!this.canPlace(tx, ty, w, h)) return null;
+    let id = opts.id;
+    if (!id) id = `b${this._nextId++}`;
+    else {
+      const m = /^b(\d+)$/.exec(id);
+      if (m) this._nextId = Math.max(this._nextId, Number(m[1]) + 1);
+    }
+    const building = {
+      id,
+      def,
+      tx,
+      ty,
+      runtime: opts.runtime ?? null,
+    };
+    for (let y = ty; y < ty + h; y++) {
+      for (let x = tx; x < tx + w; x++) {
+        this.cells[this.index(x, y)] = building;
+      }
+    }
+    this.buildings.push(building);
+    return building;
+  }
 }
 
 /** Bottom-centered sprite anchor (from DEX_FINDINGS). */

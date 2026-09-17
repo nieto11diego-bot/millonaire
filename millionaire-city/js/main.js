@@ -14,6 +14,7 @@ import { EconomySim } from "./sim.js";
 import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, buildDurationMs, buildPlaceXp, buildLevelThresholds, isConstructing } from "./economy.js";
 import { cashHtml, goldHtml, diamondHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
 import { nextLevelReward, rewardsBetween, sumRewards } from "./levelRewards.js";
+import { readSave, clearSave, buildSnapshot, applySnapshot, createAutosave } from "./save.js";
 
 const TILE = 32;
 const START_CASH = 50_000_000;
@@ -55,6 +56,14 @@ let levelThresholds = null;
 let gridRef = null;
 /** @type {import("./map/renderer.js").Renderer | null} */
 let rendererRef = null;
+/** @type {ReturnType<typeof createAutosave> | null} */
+let autosave = null;
+/** @type {{ marginRight: number, bridgeEvery: number } | null} */
+let riverOptsRef = null;
+
+function scheduleSave() {
+  autosave?.schedule();
+}
 
 function xpProgress(xp, level, thresholds) {
   if (!thresholds?.length) return { pct: 0, label: String(xp) };
@@ -208,6 +217,7 @@ function applyXp(amount) {
   }
   syncMissionValues();
   refreshHud();
+  scheduleSave();
 }
 
 function syncMissionValues() {
@@ -219,6 +229,7 @@ function initBuilding(building, opts = {}) {
   building.runtime = createRuntime(building.def, opts);
   sim?.recomputeAll();
   refreshHud();
+  scheduleSave();
 }
 
 async function main() {
@@ -239,6 +250,14 @@ async function main() {
     ...catalog.wonders,
     ...(catalog.services || []),
   ];
+  /** @type {Map<number, object>} */
+  const defsByObjectId = new Map();
+  /** @type {Map<string, object>} */
+  const defsByConstant = new Map();
+  for (const d of allDefs) {
+    if (d.objectId != null) defsByObjectId.set(d.objectId, d);
+    if (d.constant) defsByConstant.set(d.constant, d);
+  }
   const roadCost = data.roads.costCoins ?? 500;
   levelThresholds = buildLevelThresholds(data.economy.levelCurve || {});
 
@@ -285,8 +304,16 @@ async function main() {
   zeppelin.spawn();
   fighters.spawn();
 
-  // River always on the right edge, top → bottom
-  river.generate({ marginRight: 5, bridgeEvery: 11 + Math.floor(Math.random() * 3) });
+  const saved = readSave();
+  const riverOpts = saved?.river
+    ? {
+        seed: saved.river.seed,
+        marginRight: saved.river.marginRight ?? 5,
+        bridgeEvery: saved.river.bridgeEvery ?? 12,
+      }
+    : { marginRight: 5, bridgeEvery: 11 + Math.floor(Math.random() * 3) };
+  riverOptsRef = { marginRight: riverOpts.marginRight, bridgeEvery: riverOpts.bridgeEvery };
+  river.generate(riverOpts);
 
   sim = new EconomySim({
     grid,
@@ -304,6 +331,7 @@ async function main() {
       } else if (type === "build_complete") {
         setHint(`«${payload.building.def.name}» terminado. La población empezará a crecer.`);
         syncMissionValues();
+        scheduleSave();
       }
     },
   });
@@ -314,6 +342,7 @@ async function main() {
       state.cash += reward;
       syncMissionValues();
       refreshHud();
+      scheduleSave();
       const row = missions.bySku.get(sku);
       setHint(
         `¡Misión cumplida! +$${reward.toLocaleString("en-US")}` +
@@ -345,6 +374,7 @@ async function main() {
     refreshHud();
     tooltip.hide();
     setHint(`«${building.def.name}» terminado. Coste: ${cashHtml(cost)}.`);
+    scheduleSave();
   }
 
   window.__mc = { state, missions, grid, river, expansions, missionsUi, sim, tooltip, renderer };
@@ -391,6 +421,7 @@ async function main() {
     syncMissionValues();
     refreshHud();
     setHint(`Expansión comprada por $${result.cost.toLocaleString("en-US")}.`);
+    scheduleSave();
   }
 
   document.getElementById("expand-close").addEventListener("click", hideExpandBuy);
@@ -465,20 +496,47 @@ async function main() {
     else clearActiveTool();
   });
 
-  // Starter bungalow on the single unlocked expansion parcel
-  const starter = catalog.houses.find((h) => h.name === "Bungalow") || catalog.houses[0];
-  let starterTx = 0;
-  let starterTy = 0;
-  if (starter) {
-    const foot = expansions.starterTileCenter(starter.gridW, starter.gridH);
-    starterTx = foot.tx;
-    starterTy = foot.ty;
-    const placed = grid.place(starter, starterTx, starterTy);
-    if (placed) initBuilding(placed, { skipBuild: true });
-    // Road ring south of starter (free), only on unlocked tiles
-    for (let x = starterTx - 1; x < starterTx + starter.gridW + 1; x++) {
-      if (!expansions.isUnlocked(x, starterTy + starter.gridH)) continue;
-      roads.paint(x, starterTy + starter.gridH, true, () => false);
+  // Load save or place starter bungalow on the unlocked parcel
+  let loadedFromSave = false;
+  if (saved) {
+    const result = applySnapshot(saved, {
+      state,
+      grid,
+      roads,
+      expansions,
+      river,
+      missions,
+      renderer,
+      defsByObjectId,
+      defsByConstant,
+      sim,
+    });
+    if (result.ok) {
+      loadedFromSave = true;
+      if (saved.camera?.zoom != null) {
+        const zoomInput = document.getElementById("zoom");
+        if (zoomInput) zoomInput.value = String(renderer.camera.zoom);
+      }
+      syncMissionValues();
+      refreshHud();
+      setHint(`Partida cargada (${result.restored} edificios).`);
+    }
+  }
+
+  if (!loadedFromSave) {
+    const starter = catalog.houses.find((h) => h.name === "Bungalow") || catalog.houses[0];
+    let starterTx = 0;
+    let starterTy = 0;
+    if (starter) {
+      const foot = expansions.starterTileCenter(starter.gridW, starter.gridH);
+      starterTx = foot.tx;
+      starterTy = foot.ty;
+      const placed = grid.place(starter, starterTx, starterTy);
+      if (placed) initBuilding(placed, { skipBuild: true });
+      for (let x = starterTx - 1; x < starterTx + starter.gridW + 1; x++) {
+        if (!expansions.isUnlocked(x, starterTy + starter.gridH)) continue;
+        roads.paint(x, starterTy + starter.gridH, true, () => false);
+      }
     }
   }
 
@@ -681,6 +739,7 @@ async function main() {
         roads.paint(tx, ty, true, blockedForRoad, "zebra");
         sim.recomputeAll();
         refreshHud();
+        scheduleSave();
       }
       return;
     }
@@ -693,6 +752,7 @@ async function main() {
       sim.recomputeAll();
       syncMissionValues();
       refreshHud();
+      scheduleSave();
     }
   }
 
@@ -705,6 +765,7 @@ async function main() {
       syncMissionValues();
       refreshHud();
       setHint(`Carretera borrada. Reembolso $${refund.toLocaleString("en-US")}`);
+      scheduleSave();
       return true;
     }
     const removed = grid.eraseAt(tx, ty);
@@ -735,6 +796,7 @@ async function main() {
       sim.recomputeAll();
       syncMissionValues();
       refreshHud();
+      scheduleSave();
       return true;
     }
     return false;
@@ -829,6 +891,7 @@ async function main() {
       setHint(
         `Cobrado alquiler de ${building.def.name}: +$${result.cash.toLocaleString("en-US")}${drops.suffix}`
       );
+      scheduleSave();
       return;
     }
 
@@ -849,6 +912,7 @@ async function main() {
       setHint(
         `Cobrado ${building.def.name}: +$${result.cash.toLocaleString("en-US")}${drops.suffix}`
       );
+      scheduleSave();
       return;
     }
 
@@ -862,6 +926,7 @@ async function main() {
       if (result.gold) parts.push(`+${result.gold} lingote${result.gold === 1 ? "" : "s"}`);
       if (result.diamonds) parts.push(`+${result.diamonds} diamante${result.diamonds === 1 ? "" : "s"}`);
       setHint(`Cobrado ${building.def.name}: ${parts.join(" · ")}`);
+      scheduleSave();
       return;
     }
 
@@ -964,6 +1029,7 @@ async function main() {
               ? `Sin cambio: ${building.def.name}`
               : `Movido: ${building.def.name}. Coste $${cost.toLocaleString("en-US")}`
           );
+          scheduleSave();
         }
         moveDrag = null;
         renderer.hover = null;
@@ -1051,6 +1117,7 @@ async function main() {
             ? `Colocado: ${def.name}. Construcción: ${formatDuration(buildMs)}.`
             : `Colocado: ${def.name}`
         );
+        scheduleSave();
       }
       return;
     }
@@ -1252,6 +1319,47 @@ async function main() {
   }
   refreshHud();
   setMode("pan");
+
+  autosave = createAutosave(
+    () =>
+      buildSnapshot({
+        state,
+        grid,
+        roads,
+        expansions,
+        river,
+        missions,
+        renderer,
+        riverOpts: riverOptsRef || undefined,
+      }),
+    { delayMs: 450 }
+  );
+
+  // Persist immediately after first load/new game, then periodically.
+  scheduleSave();
+  setInterval(() => autosave?.flush(), 60_000);
+
+  window.addEventListener("beforeunload", () => {
+    autosave?.flush();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") autosave?.flush();
+  });
+
+  document.getElementById("btn-new-game")?.addEventListener("click", () => {
+    openConfirm({
+      title: "Nueva partida",
+      copy: "Se borrará el progreso guardado en este navegador.",
+      ask: "¿Empezar de cero?",
+      detailHtml: "Esta acción no se puede deshacer.",
+      okLabel: "Nueva partida",
+      danger: true,
+      onConfirm: () => {
+        clearSave();
+        location.reload();
+      },
+    });
+  });
 
   let lastTs = performance.now();
   function loop(ts) {

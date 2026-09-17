@@ -94,16 +94,18 @@ export class ShopUI {
         sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.round(sec / 60)}m` : `${Math.round(sec / 3600)}h`;
       return meta(`${size} · cada ${label}`);
     }
-    if (item.cityBonusScaled != null || item.cityBonusPercentApprox != null) {
+    if (item.category === "wonder") {
       const pct =
-        item.cityBonusPercentApprox != null
-          ? item.cityBonusPercentApprox
-          : Math.round((item.cityBonusScaled / 100) * 100) / 100;
+        item.rewardBonusPercentApprox != null
+          ? item.rewardBonusPercentApprox
+          : item.rewardBonusScaled != null
+            ? Math.round((item.rewardBonusScaled / 100) * 100) / 100
+            : 0;
       const infl =
         item.influenceRadiusTiles != null && item.influenceRadiusTiles >= 0
-          ? ` · infl. ${item.influenceRadiusTiles}`
+          ? ` · radio ${item.influenceRadiusTiles}`
           : "";
-      return meta(`${size} · ciudad +${pct}%${infl}`);
+      return meta(`${size} · +${pct}% casas/comercios${infl}`);
     }
     if (item.houseBonusPercentApprox != null || item.houseBonusScaled != null) {
       const pct =

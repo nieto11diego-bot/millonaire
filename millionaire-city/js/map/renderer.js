@@ -398,7 +398,7 @@ export class Renderer {
     const cx = (tx + def.gridW / 2) * tile;
     const cy = (ty + def.gridH / 2) * tile;
     const r = radiusTiles * tile;
-    const isWonder = def.category === "wonder" || def.cityBonusScaled != null;
+    const isWonder = def.category === "wonder";
     const fill = isWonder ? "rgba(212,168,72,0.16)" : "rgba(138,154,91,0.18)";
     const stroke = isWonder ? "rgba(196,140,40,0.95)" : "rgba(138,154,91,0.95)";
 
