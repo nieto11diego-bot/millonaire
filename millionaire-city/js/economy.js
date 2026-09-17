@@ -480,7 +480,7 @@ export function normalizedBuildCost(def) {
  * Scales with purchase cost: $500 → 1 XP (Bungalow $50k → 100 XP).
  */
 export const BUILD_PLACE_XP = {
-  cashPerXp: 500,
+  cashPerXp: 900,
   min: 1,
 };
 
@@ -659,8 +659,26 @@ export function isRoadConnected(building, roads) {
   return false;
 }
 
+/**
+ * Continuous road path to Headquarters (gameplay gate).
+ * Falls back to local adjacency only when no graph is provided.
+ * @param {object} building
+ * @param {object|null} roads
+ * @param {{ isConnectedToHQ?: (b: object) => boolean }|null} [graph]
+ */
+export function isConnectedToHQ(building, roads, graph = null) {
+  if (graph && typeof graph.isConnectedToHQ === "function") {
+    return graph.isConnectedToHQ(building);
+  }
+  return isRoadConnected(building, roads);
+}
+
 export function needsRoad(def) {
   return def.category === "house" || def.category === "commercial" || def.category === "wonder";
+}
+
+export function isHQ(def) {
+  return !!def && (def.category === "hq" || def.constant === "HQ");
 }
 
 export function formatDuration(ms) {

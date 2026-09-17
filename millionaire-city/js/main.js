@@ -6,12 +6,13 @@ import { RiverLayer } from "./map/river.js";
 import { ExpansionLayer } from "./map/expansions.js";
 import { ZeppelinFlyer, ZeppelinFleet, FCB_BANNER_TEXTS, MADRID_BANNER_TEXTS } from "./map/zeppelin.js";
 import { FighterPair } from "./map/fighter.js";
+import { RoadGraph } from "./map/roadGraph.js";
 import { ShopUI } from "./ui/shop.js";
 import { MissionTracker, companyValueFromGrid } from "./missions.js";
 import { MissionsUI } from "./ui/missions.js";
 import { BuildingTooltip } from "./ui/tooltip.js";
 import { EconomySim } from "./sim.js";
-import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, buildDurationMs, buildPlaceXp, buildLevelThresholds, isConstructing } from "./economy.js";
+import { createRuntime, formatDuration, isConnectedToHQ, isHQ, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, buildDurationMs, buildPlaceXp, buildLevelThresholds, isConstructing } from "./economy.js";
 import { cashHtml, goldHtml, diamondHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
 import { nextLevelReward, rewardsBetween, sumRewards } from "./levelRewards.js";
 import { readSave, clearSave, buildSnapshot, applySnapshot, createAutosave, setPersistEnabled, NEW_GAME_FLAG } from "./save.js";
@@ -50,6 +51,8 @@ const canvas = document.getElementById("map");
 let missions = null;
 /** @type {EconomySim | null} */
 let sim = null;
+/** @type {import("./map/roadGraph.js").RoadGraph | null} */
+let roadGraphRef = null;
 /** @type {number[] | null} */
 let levelThresholds = null;
 /** @type {import("./map/grid.js").Grid | null} */
@@ -243,9 +246,79 @@ function syncMissionValues() {
 
 function initBuilding(building, opts = {}) {
   building.runtime = createRuntime(building.def, opts);
+  roadGraphRef?.invalidate();
   sim?.recomputeAll();
   refreshHud();
   scheduleSave();
+}
+
+/**
+ * Place HQ on unlocked land and paint a road strip that touches its footprint.
+ * @returns {object|null} placed HQ building
+ */
+function placeHeadquarters(grid, roads, expansions, hqDef, preferredTx, preferredTy, initFn) {
+  if (!hqDef) return null;
+  const w = hqDef.gridW;
+  const h = hqDef.gridH;
+  const candidates = [];
+  if (preferredTx != null && preferredTy != null) {
+    candidates.push({ tx: preferredTx, ty: preferredTy });
+  }
+  const foot = expansions.starterTileCenter(w, h);
+  candidates.push(foot);
+  // Scan starter parcel for a free footprint
+  const z0x = expansions.startZx * expansions.zoneW;
+  const z0y = expansions.startZy * expansions.zoneH;
+  for (let ty = z0y; ty <= z0y + expansions.zoneH - h; ty++) {
+    for (let tx = z0x; tx <= z0x + expansions.zoneW - w; tx++) {
+      candidates.push({ tx, ty });
+    }
+  }
+
+  for (const { tx, ty } of candidates) {
+    if (!grid.canPlace(tx, ty, w, h)) continue;
+    const placed = grid.place(hqDef, tx, ty);
+    if (!placed) continue;
+    initFn?.(placed, { skipBuild: true });
+    const roadY = ty + h;
+    if (roadY < grid.rows) {
+      for (let x = tx; x < tx + w; x++) {
+        if (!expansions.isUnlocked(x, roadY)) continue;
+        if (grid.buildingAt(x, roadY)) continue;
+        roads.paint(x, roadY, true, () => false);
+      }
+    }
+    return placed;
+  }
+  return null;
+}
+
+/**
+ * Paint a continuous road between two footprints' bottom edges (same row if possible).
+ */
+function connectBuildingsWithRoad(roads, expansions, grid, a, b) {
+  if (!a || !b) return;
+  const ay = a.ty + a.def.gridH;
+  const by = b.ty + b.def.gridH;
+  const y = ay === by ? ay : Math.max(ay, by);
+  const x0 = Math.min(a.tx, b.tx);
+  const x1 = Math.max(a.tx + a.def.gridW - 1, b.tx + b.def.gridW - 1);
+  for (let x = x0; x <= x1; x++) {
+    if (!expansions.isUnlocked(x, y)) continue;
+    if (grid.buildingAt(x, y)) continue;
+    roads.paint(x, y, true, () => false);
+  }
+  // Vertical stubs if bottoms differ
+  if (ay !== by) {
+    const top = Math.min(ay, by);
+    const bot = Math.max(ay, by);
+    const stubX = a.tx + Math.floor(a.def.gridW / 2);
+    for (let yv = top; yv <= bot; yv++) {
+      if (!expansions.isUnlocked(stubX, yv)) continue;
+      if (grid.buildingAt(stubX, yv)) continue;
+      roads.paint(stubX, yv, true, () => false);
+    }
+  }
 }
 
 async function main() {
@@ -259,11 +332,13 @@ async function main() {
   }
 
   const catalog = enrichCatalog(data.economy, data.buildings);
+  const hqDef = catalog.hq;
   const allDefs = [
     ...catalog.houses,
     ...catalog.commerces,
     ...catalog.decorations,
     ...catalog.wonders,
+    ...(hqDef ? [hqDef] : []),
   ];
   /** @type {Map<number, object>} */
   const defsByObjectId = new Map();
@@ -291,6 +366,8 @@ async function main() {
   });
   grid.river = river;
   grid.expansions = expansions;
+  const roadGraph = new RoadGraph({ cols: grid.cols, rows: grid.rows, roads, grid });
+  roadGraphRef = roadGraph;
   const renderer = new Renderer(canvas, grid, roads);
   rendererRef = renderer;
   renderer.river = river;
@@ -346,6 +423,7 @@ async function main() {
   sim = new EconomySim({
     grid,
     roads,
+    graph: roadGraph,
     economy: data.economy,
     onEvent: (type, payload) => {
       if (type === "rent_ready") {
@@ -384,7 +462,13 @@ async function main() {
   const tooltip = new BuildingTooltip(document.getElementById("building-tooltip"), {
     t,
     onInstantBuild: (building) => tryInstantBuild(building),
+    isRoadOk: (building) => isConnectedToHQ(building, roads, roadGraph),
   });
+
+  function notifyTopologyChanged() {
+    roadGraph.invalidate();
+    sim?.recomputeAll();
+  }
 
   function tryInstantBuild(building) {
     if (!isConstructing(building)) return;
@@ -405,7 +489,18 @@ async function main() {
     scheduleSave();
   }
 
-  window.__mc = { state, missions, grid, river, expansions, missionsUi, sim, tooltip, renderer };
+  window.__mc = {
+    state,
+    missions,
+    grid,
+    river,
+    expansions,
+    missionsUi,
+    sim,
+    tooltip,
+    renderer,
+    roadGraph,
+  };
 
   // —— Expansion purchase dialog ——
   const expandPanel = document.getElementById("expand-panel");
@@ -447,6 +542,7 @@ async function main() {
     hideExpandBuy();
     missions?.improve(34); // "Size does Matter"
     syncMissionValues();
+    notifyTopologyChanged();
     refreshHud();
     setHint(`Expansión comprada por $${result.cost.toLocaleString("en-US")}.`);
     scheduleSave();
@@ -524,7 +620,7 @@ async function main() {
     else clearActiveTool();
   });
 
-  // Load save or place starter bungalow on the unlocked parcel
+  // Load save or place starter bungalow + HQ on the unlocked parcel
   let loadedFromSave = false;
   if (saved) {
     const result = applySnapshot(saved, {
@@ -553,20 +649,49 @@ async function main() {
 
   if (!loadedFromSave) {
     const starter = catalog.houses.find((h) => h.name === "Bungalow") || catalog.houses[0];
-    let starterTx = 0;
-    let starterTy = 0;
+    let bungalow = null;
     if (starter) {
       const foot = expansions.starterTileCenter(starter.gridW, starter.gridH);
-      starterTx = foot.tx;
-      starterTy = foot.ty;
-      const placed = grid.place(starter, starterTx, starterTy);
-      if (placed) initBuilding(placed, { skipBuild: true });
-      for (let x = starterTx - 1; x < starterTx + starter.gridW + 1; x++) {
-        if (!expansions.isUnlocked(x, starterTy + starter.gridH)) continue;
-        roads.paint(x, starterTy + starter.gridH, true, () => false);
+      bungalow = grid.place(starter, foot.tx, foot.ty);
+      if (bungalow) initBuilding(bungalow, { skipBuild: true });
+    }
+    if (hqDef) {
+      let hqTx = null;
+      let hqTy = null;
+      if (bungalow) {
+        hqTx = bungalow.tx - hqDef.gridW - 1;
+        hqTy = bungalow.ty;
+      }
+      const hq = placeHeadquarters(grid, roads, expansions, hqDef, hqTx, hqTy, initBuilding);
+      if (hq && bungalow) connectBuildingsWithRoad(roads, expansions, grid, hq, bungalow);
+      else if (bungalow) {
+        for (let x = bungalow.tx - 1; x < bungalow.tx + bungalow.def.gridW + 1; x++) {
+          if (!expansions.isUnlocked(x, bungalow.ty + bungalow.def.gridH)) continue;
+          roads.paint(x, bungalow.ty + bungalow.def.gridH, true, () => false);
+        }
       }
     }
   }
+
+  // Ensure HQ exists (new game already placed it; old saves get one injected)
+  if (hqDef && !roadGraph.findHQ()) {
+    const house =
+      grid.buildings.find((b) => b.def?.category === "house") || grid.buildings[0] || null;
+    let prefTx = null;
+    let prefTy = null;
+    if (house) {
+      prefTx = house.tx - hqDef.gridW - 1;
+      prefTy = house.ty;
+    }
+    const hq = placeHeadquarters(grid, roads, expansions, hqDef, prefTx, prefTy, (b, opts) => {
+      b.runtime = createRuntime(b.def, opts);
+    });
+    if (hq && house) connectBuildingsWithRoad(roads, expansions, grid, hq, house);
+    notifyTopologyChanged();
+    scheduleSave();
+  }
+
+  notifyTopologyChanged();
 
   const shopEl = document.getElementById("shop");
   const btnShop = document.getElementById("btn-shop");
@@ -765,7 +890,7 @@ async function main() {
       // Allow converting an existing road tile into a zebra crossing (no extra charge).
       if (kind === "zebra" && roads.kindAt(tx, ty) !== "zebra") {
         roads.paint(tx, ty, true, blockedForRoad, "zebra");
-        sim.recomputeAll();
+        notifyTopologyChanged();
         refreshHud();
         scheduleSave();
       }
@@ -777,7 +902,7 @@ async function main() {
     }
     if (roads.paint(tx, ty, true, blockedForRoad, kind)) {
       state.cash -= roadCost;
-      sim.recomputeAll();
+      notifyTopologyChanged();
       syncMissionValues();
       refreshHud();
       scheduleSave();
@@ -789,12 +914,17 @@ async function main() {
       roads.paint(tx, ty, false);
       const refund = Math.floor(roadCost * 0.5);
       state.cash += refund;
-      sim.recomputeAll();
+      notifyTopologyChanged();
       syncMissionValues();
       refreshHud();
       setHint(`Carretera borrada. Reembolso $${refund.toLocaleString("en-US")}`);
       scheduleSave();
       return true;
+    }
+    const hitB = grid.buildingAt(tx, ty);
+    if (hitB && isHQ(hitB.def)) {
+      setHint("El Headquarters no se puede destruir.");
+      return false;
     }
     const removed = grid.eraseAt(tx, ty);
     if (removed) {
@@ -821,7 +951,7 @@ async function main() {
             (cashPrice ? ` (de $${cashPrice.toLocaleString("en-US")})` : "")
         );
       }
-      sim.recomputeAll();
+      notifyTopologyChanged();
       syncMissionValues();
       refreshHud();
       scheduleSave();
@@ -855,6 +985,10 @@ async function main() {
   }
 
   function askMoveBuilding(hit, tx, ty) {
+    if (isHQ(hit.def)) {
+      setHint("El Headquarters no se puede mover.");
+      return;
+    }
     const cost = moveCostOf(hit.def);
     const ox = tx - hit.tx;
     const oy = ty - hit.ty;
@@ -876,6 +1010,11 @@ async function main() {
   }
 
   function askEraseAt(tx, ty) {
+    const hit = grid.buildingAt(tx, ty);
+    if (hit && isHQ(hit.def)) {
+      setHint("El Headquarters no se puede destruir.");
+      return false;
+    }
     const preview = erasePreviewAt(tx, ty);
     if (!preview) return false;
     openConfirm({
@@ -903,8 +1042,8 @@ async function main() {
     }
 
     if (action === "collect_rent") {
-      if (needsRoad(building.def) && !isRoadConnected(building, roads)) {
-        setHint("Esta casa necesita carretera adyacente para cobrar alquiler.");
+      if (needsRoad(building.def) && !isConnectedToHQ(building, roads, roadGraph)) {
+        setHint("Esta casa necesita carretera continua hasta el Headquarters.");
         return;
       }
       const result = sim.collectRent(building);
@@ -924,8 +1063,8 @@ async function main() {
     }
 
     if (action === "collect_commerce") {
-      if (needsRoad(building.def) && !isRoadConnected(building, roads)) {
-        setHint("Este comercio necesita carretera adyacente para cobrar.");
+      if (needsRoad(building.def) && !isConnectedToHQ(building, roads, roadGraph)) {
+        setHint("Este comercio necesita carretera continua hasta el Headquarters.");
         return;
       }
       const result = sim.collectCommerce(building);
@@ -945,6 +1084,10 @@ async function main() {
     }
 
     if (action === "collect_wonder") {
+      if (needsRoad(building.def) && !isConnectedToHQ(building, roads, roadGraph)) {
+        setHint("Esta maravilla necesita carretera continua hasta el Headquarters.");
+        return;
+      }
       const result = sim.collectWonder(building);
       if (!result.ok) return;
       if (result.gold) state.gold += result.gold;
@@ -1049,7 +1192,7 @@ async function main() {
             state.cash -= cost;
             refreshHud();
           }
-          sim.recomputeAll();
+          notifyTopologyChanged();
           syncMissionValues();
           refreshHud();
           setHint(
@@ -1338,7 +1481,7 @@ async function main() {
     { passive: false }
   );
 
-  sim.recomputeAll();
+  notifyTopologyChanged();
   syncMissionValues();
   refreshLevelRewardTip();
   if (xpHudEl) {

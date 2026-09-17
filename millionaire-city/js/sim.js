@@ -13,7 +13,7 @@ import {
   commerceCycleReward,
   commerceCollectXp,
   commerceRewardDurationMs,
-  isRoadConnected,
+  isConnectedToHQ,
   needsRoad,
   wonderGoldIntervalMs,
   wonderDiamondIntervalMs,
@@ -33,11 +33,12 @@ import {
  */
 export class EconomySim {
   /**
-   * @param {{ grid: import("./map/grid.js").Grid, roads?: object, economy: object, onEvent?: (type: string, payload: object) => void }} opts
+   * @param {{ grid: import("./map/grid.js").Grid, roads?: object, graph?: object, economy: object, onEvent?: (type: string, payload: object) => void }} opts
    */
-  constructor({ grid, roads = null, economy, onEvent = () => {} }) {
+  constructor({ grid, roads = null, graph = null, economy, onEvent = () => {} }) {
     this.grid = grid;
     this.roads = roads;
+    this.graph = graph;
     this.index = makeEconomyIndex(economy);
     this.onEvent = onEvent;
   }
@@ -78,14 +79,14 @@ export class EconomySim {
         continue;
       }
 
-      const roadOk = !needsRoad(b.def) || isRoadConnected(b, this.roads);
+      const roadOk = !needsRoad(b.def) || isConnectedToHQ(b, this.roads, this.graph);
 
       if (b.def.category === "house") {
         dirty = this._tickHouse(b, step, roadOk) || dirty;
       } else if (b.def.category === "commercial") {
         dirty = this._tickCommerce(b, step, roadOk) || dirty;
       } else if (b.def.category === "wonder") {
-        dirty = this._tickWonder(b) || dirty;
+        dirty = this._tickWonder(b, roadOk) || dirty;
       }
     }
     return dirty;
@@ -181,9 +182,10 @@ export class EconomySim {
     return false;
   }
 
-  _tickWonder(b) {
+  _tickWonder(b, roadOk = true) {
     const rt = b.runtime;
     if (!rt || rt.status === STATUS.BUILDING) return false;
+    if (!roadOk) return false;
     const now = Date.now();
     let dirty = false;
     if (!rt.goldNotified && wonderGoldReady(rt, now)) {

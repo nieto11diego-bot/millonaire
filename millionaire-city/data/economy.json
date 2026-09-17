@@ -801,8 +801,8 @@
                        "contractGroup":  16,
                        "instantBuildFactor":  7500,
                        "forSale":  -1,
-                       "width":  192,
-                       "height":  147,
+                       "width":  198,
+                       "height":  180,
                        "spriteConfidence":  "custom-photo"
                    },
                    {
@@ -958,8 +958,8 @@
                        "descTid":  -1,
                        "level":  32,
                        "exp":  30000,
-                       "gridW":  3,
-                       "gridH":  2,
+                       "gridW":  6,
+                       "gridH":  4,
                        "costCoins":  0,
                        "costFortune":  0,
                        "costDiamonds":  30,
@@ -971,7 +971,7 @@
                        "contractGroup":  15,
                        "instantBuildFactor":  10000,
                        "forSale":  -1,
-                       "width":  104,
+                       "width":  200,
                        "height":  430,
                        "spriteConfidence":  "custom-photo"
                    }

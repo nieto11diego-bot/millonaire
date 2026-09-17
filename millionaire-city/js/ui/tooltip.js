@@ -24,6 +24,7 @@ import {
   buildDurationMs,
   buildPlaceXp,
   instantBuildCashCost,
+  needsRoad,
 } from "../economy.js";
 import { CASH_ICON, GOLD_ICON, DIAMOND_ICON, formatCash, formatGold, formatDiamonds } from "./money.js";
 
@@ -42,12 +43,14 @@ export class BuildingTooltip {
    * @param {{
    *   t?: (tid: number, fb: string) => string,
    *   onInstantBuild?: (building: object) => void,
+   *   isRoadOk?: (building: object) => boolean,
    * }} [options]
    */
   constructor(root, options = {}) {
     this.root = root;
     this.t = options.t || ((_tid, fb) => fb);
     this.onInstantBuild = options.onInstantBuild || null;
+    this.isRoadOk = options.isRoadOk || (() => true);
     this.building = null;
     /** @type {object|null} catalog def preview */
     this.catalogDef = null;
@@ -191,6 +194,7 @@ export class BuildingTooltip {
     const rt = this.building.runtime || {};
     const isHouse = def.category === "house";
     const isShop = def.category === "commercial";
+    const roadOk = !needsRoad(def) || this.isRoadOk(this.building);
 
     const name = def.name || "Edificio";
     const peopleLabel = isHouse ? "Población" : "Ciclo";
@@ -229,6 +233,8 @@ export class BuildingTooltip {
       };
     }
 
+    if (!roadOk) statusNote = "Sin conexión al Headquarters";
+
     if (isHouse) {
       const people = rt.people || 0;
       const maxPeople = rt.maxPeople || houseMaxPeople(def);
@@ -238,12 +244,12 @@ export class BuildingTooltip {
       const projected = houseIncome(def, people, infl);
       cashText = String(rt.status === STATUS.READY ? rt.lastIncome || projected : projected);
       xpText = String(houseCollectXp(def, Number(cashText) || 0));
-      if (rt.status === STATUS.WAITING && rt.durationMs > 0) {
+      if (roadOk && rt.status === STATUS.WAITING && rt.durationMs > 0) {
         showTimer = true;
         timeText = formatTipTime(rt.remainingMs / TIME_SCALE);
         progressPct = Math.max(0, Math.min(100, (1 - rt.remainingMs / rt.durationMs) * 100));
         if (people < maxPeople) statusNote = "Población en crecimiento";
-      } else if (rt.status === STATUS.READY) {
+      } else if (roadOk && rt.status === STATUS.READY) {
         showTimer = true;
         timeText = "¡Listo!";
         progressPct = 100;
@@ -271,11 +277,11 @@ export class BuildingTooltip {
       peopleText = formatDuration(commerceRewardDurationMs(def));
       const infl = rt.influence || 0;
       const bonusPct = Math.round((infl / 100) * 10) / 10;
-      if (rt.status === STATUS.WAITING && rt.durationMs > 0) {
+      if (roadOk && rt.status === STATUS.WAITING && rt.durationMs > 0) {
         showTimer = true;
         timeText = formatTipTime(rt.remainingMs / TIME_SCALE);
         progressPct = Math.max(0, Math.min(100, (1 - rt.remainingMs / rt.durationMs) * 100));
-      } else if (rt.status === STATUS.READY) {
+      } else if (roadOk && rt.status === STATUS.READY) {
         showTimer = true;
         timeText = "¡Listo!";
         progressPct = 100;
@@ -341,8 +347,9 @@ export class BuildingTooltip {
       };
     }
 
-    const goldReady = wonderGoldReady(rt);
-    const diaReady = wonderDiamondReady(rt);
+    const roadOk = !needsRoad(def) || this.isRoadOk(this.building);
+    const goldReady = roadOk && wonderGoldReady(rt);
+    const diaReady = roadOk && wonderDiamondReady(rt);
     const goldLeft = wonderGoldRemainingMs(rt);
     const diaLeft = wonderDiamondRemainingMs(rt);
     const goldAmt = wonderGoldReward(def);
@@ -354,7 +361,8 @@ export class BuildingTooltip {
           ? Math.round((def.rewardBonusScaled / 100) * 100) / 100
           : 0;
     let statusNote = "";
-    if (goldReady || diaReady) statusNote = "Toca para cobrar";
+    if (!roadOk) statusNote = "Sin conexión al Headquarters";
+    else if (goldReady || diaReady) statusNote = "Toca para cobrar";
     return {
       kind: "wonder",
       name,
@@ -634,7 +642,7 @@ export class BuildingTooltip {
             </span>
           </div>
           ${
-            m.showTimer && m.statusNote
+            m.statusNote
               ? `<div class="bldg-tip-footnote">${escapeHtml(m.statusNote)}</div>`
               : ""
           }
