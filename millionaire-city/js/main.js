@@ -128,7 +128,7 @@ function setMode(mode) {
   } else if (mode === "move") {
     setHint("Clic en un edificio o decoración para moverlo (cuesta 1/10 del precio). Te pedirá confirmación.");
   } else if (mode === "erase") {
-    setHint("Clic en carretera, edificio o hierba para borrarlo (reembolso 50% en edificios/carreteras). Te pedirá confirmación.");
+    setHint("Clic en carretera, edificio o arbusto para borrarlo (reembolso 50% en edificios/carreteras). Te pedirá confirmación.");
   } else if (mode === "road") {
     setHint(
       state.roadKind === "zebra"
@@ -136,7 +136,7 @@ function setMode(mode) {
         : "Pinta carreteras: recta por defecto; curva/T/cruce según vecinos. Clic vacío cancela."
     );
   } else if (mode === "ground") {
-    setHint("Pinta hierba bajo edificios (cubre el verde del mapa). Arrastra para pintar.");
+    setHint("Pinta arbustos bajo edificios. Arrastra para pintar.");
   } else if (state.selected) {
     setHint(`Colocando: ${state.selected.name}. Clic en el mapa.`);
   } else {
@@ -738,7 +738,7 @@ async function main() {
       changed = true;
     }
     if (changed) {
-      setHint("Hierba colocada.");
+      setHint("Arbusto colocado.");
     }
   }
 
@@ -785,7 +785,7 @@ async function main() {
     }
     if (ground.has(tx, ty)) {
       ground.paint(tx, ty, false);
-      setHint("Hierba borrada.");
+      setHint("Arbusto borrado.");
       return true;
     }
     return false;
@@ -813,7 +813,7 @@ async function main() {
       return { name: hit.def.name, detailHtml };
     }
     if (ground.has(tx, ty)) {
-      return { name: "Hierba", detailHtml: "Sin coste (gratis)" };
+      return { name: "Arbusto", detailHtml: "Sin coste (gratis)" };
     }
     return null;
   }
@@ -1197,8 +1197,15 @@ async function main() {
         renderer.radiusFocus = null;
       }
       if (hit && (hit.def.category === "house" || hit.def.category === "commercial" || hit.def.category === "wonder")) {
-        const anchor = renderer.buildingAnchorScreen(hit);
-        tooltip.show(hit, { left: anchor.x, top: anchor.y });
+        // Construcción rápida: solo al clic, no al pasar el ratón
+        if (isConstructing(hit)) {
+          if (!(tooltip.building === hit && !tooltip.root.hidden) && !tooltip.pointerInside) {
+            tooltip.scheduleHide(80);
+          }
+        } else {
+          const anchor = renderer.buildingAnchorScreen(hit);
+          tooltip.show(hit, { left: anchor.x, top: anchor.y });
+        }
       } else if (renderer.expandHover) {
         const cost = expansions.costFor(renderer.expandHover.zx, renderer.expandHover.zy);
         setHint(`Expansión en venta: $${(cost || 0).toLocaleString("en-US")}. Toca para comprar.`);

@@ -632,8 +632,8 @@
                        "contractGroup":  8,
                        "instantBuildFactor":  375,
                        "forSale":  -1,
-                       "width":  109,
-                       "height":  120,
+                       "width":  96,
+                       "height":  128,
                        "spriteConfidence":  "dex-verified"
                    },
                    {
@@ -656,8 +656,8 @@
                        "contractGroup":  9,
                        "instantBuildFactor":  625,
                        "forSale":  -1,
-                       "width":  109,
-                       "height":  120,
+                       "width":  96,
+                       "height":  128,
                        "spriteConfidence":  "dex-verified"
                    },
                    {
@@ -704,7 +704,7 @@
                        "contractGroup":  10,
                        "instantBuildFactor":  1875,
                        "forSale":  -1,
-                       "width":  117,
+                       "width":  138,
                        "height":  144,
                        "spriteConfidence":  "dex-verified"
                    },
@@ -764,7 +764,7 @@
                        "descTid":  -1,
                        "level":  25,
                        "exp":  7500,
-                       "gridW":  4,
+                       "gridW":  3,
                        "gridH":  3,
                        "costCoins":  3750000,
                        "costFortune":  0,
@@ -776,8 +776,8 @@
                        "contractGroup":  11,
                        "instantBuildFactor":  4375,
                        "forSale":  -1,
-                       "width":  134,
-                       "height":  143,
+                       "width":  96,
+                       "height":  128,
                        "spriteConfidence":  "dex-verified"
                    },
                    {
@@ -873,9 +873,8 @@
                        "contractGroup":  15,
                        "instantBuildFactor":  10000,
                        "forSale":  -1,
-                       "width":  148,
-                       "height":  280,
-                       "spriteOffsetY":  -13,
+                       "width":  160,
+                       "height":  357,
                        "spriteConfidence":  "custom-photo"
                    },
                    {
@@ -922,8 +921,8 @@
                        "contractGroup":  15,
                        "instantBuildFactor":  9000,
                        "forSale":  -1,
-                       "width":  90,
-                       "height":  281,
+                       "width":  112,
+                       "height":  357,
                        "spriteConfidence":  "custom-photo"
                    },
                    {
@@ -946,8 +945,8 @@
                        "contractGroup":  15,
                        "instantBuildFactor":  10000,
                        "forSale":  -1,
-                       "width":  80,
-                       "height":  281,
+                       "width":  112,
+                       "height":  357,
                        "spriteConfidence":  "custom-photo"
                    },
                    {
@@ -972,7 +971,7 @@
                        "instantBuildFactor":  10000,
                        "forSale":  -1,
                        "width":  163,
-                       "height":  442,
+                       "height":  430,
                        "spriteConfidence":  "custom-photo"
                    }
                ],

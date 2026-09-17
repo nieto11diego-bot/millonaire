@@ -164,9 +164,9 @@ export class ShopUI {
       grassBtn.type = "button";
       grassBtn.className = "card" + (this.tool === "grass" ? " selected" : "");
       grassBtn.innerHTML = `
-        <div class="ph ground-swatch" style="background:#6B8E23" aria-hidden="true"></div>
+        <img src="assets/ground/bush.png" alt="" />
         <div class="meta">
-          <div class="name">Hierba</div>
+          <div class="name">Arbusto</div>
           <div class="sub">Gratis · bajo edificios</div>
         </div>
       `;
@@ -182,7 +182,7 @@ export class ShopUI {
       const help = document.createElement("p");
       help.style.cssText = "color:#1a5f96;font-size:0.8rem;padding:0.5rem;margin:0;font-weight:600";
       help.innerHTML =
-        "Pinta arrastrando. <strong>Hierba</strong> se puede poner debajo de edificios ya construidos para tapar el suelo verde. Recta por defecto en carreteras; curva / T / cruce según vecinos. <strong>Borrar</strong> quita carretera, edificio o hierba. Clic vacío o Esc cancela.";
+        "Pinta arrastrando. <strong>Arbusto</strong> se puede poner debajo de edificios ya construidos. Recta por defecto en carreteras; curva / T / cruce según vecinos. <strong>Borrar</strong> quita carretera, edificio o arbusto. Clic vacío o Esc cancela.";
       list.appendChild(help);
       return;
     }

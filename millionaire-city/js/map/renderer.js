@@ -1,6 +1,8 @@
 import { spriteOrigin } from "./grid.js";
 import { FloatingRewards } from "./floatingRewards.js";
 
+const BUSH_SPRITE = "assets/ground/bush.png";
+
 /**
  * Canvas renderer: grass grid + buildings with Y-sort.
  */
@@ -36,50 +38,13 @@ export class Renderer {
     this.expansions = null;
     /** Show tile grid only while placing / moving. */
     this.showGrid = false;
-    this.grassPattern = null;
+    /** Flat base grass color. */
+    this.grassColor = "#7BA73B";
     /** @type {{ zx: number, zy: number } | null} */
     this.expandHover = null;
     this.floatingRewards = new FloatingRewards();
     this._resize();
     window.addEventListener("resize", () => this._resize());
-  }
-
-  /** Soft mottled grass (#7BA73B). */
-  _ensureGrassPattern() {
-    if (this.grassPattern) return this.grassPattern;
-    const size = 128;
-    const c = document.createElement("canvas");
-    c.width = size;
-    c.height = size;
-    const g = c.getContext("2d");
-    const img = g.createImageData(size, size);
-    const d = img.data;
-    // Base / light / dark around #7BA73B
-    const base = [123, 167, 59]; // #7BA73B
-    const light = [138, 182, 72]; // #8AB648
-    const dark = [108, 150, 48]; // #6C9630
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        // Layered value noise for soft lawn grain (not a hard checker)
-        const n1 =
-          Math.sin(x * 0.37 + y * 0.19) * 0.35 +
-          Math.sin(x * 0.11 - y * 0.29) * 0.25 +
-          Math.sin((x + y) * 0.08) * 0.2 +
-          Math.sin(x * 0.73) * Math.cos(y * 0.61) * 0.2;
-        const n2 = ((x * 374761393 + y * 668265263) >>> 0) % 1000 / 1000 - 0.5;
-        const t = Math.max(-1, Math.min(1, n1 + n2 * 0.35));
-        const src = t > 0 ? light : dark;
-        const a = Math.abs(t);
-        const i = (y * size + x) * 4;
-        d[i] = Math.round(base[0] + (src[0] - base[0]) * a);
-        d[i + 1] = Math.round(base[1] + (src[1] - base[1]) * a);
-        d[i + 2] = Math.round(base[2] + (src[2] - base[2]) * a);
-        d[i + 3] = 255;
-      }
-    }
-    g.putImageData(img, 0, 0);
-    this.grassPattern = this.ctx.createPattern(c, "repeat");
-    return this.grassPattern;
   }
 
   _resize() {
@@ -94,8 +59,6 @@ export class Renderer {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.cssWidth = w;
     this.cssHeight = h;
-    // Canvas resize resets context; rebuild grass pattern next draw
-    this.grassPattern = null;
   }
 
   async preload(defs) {
@@ -104,6 +67,7 @@ export class Renderer {
       "assets/ui/icon_cash.png",
       "assets/ui/icon_gold.svg",
       "assets/ui/icon_diamond.svg",
+      BUSH_SPRITE,
     ];
     await Promise.all(
       urls.map(
@@ -173,8 +137,8 @@ export class Renderer {
     ctx.scale(z, z);
     ctx.translate(-mapW / 2 - this.camera.x, -mapH / 2 - this.camera.y);
 
-    // Base grass (suelo normal)
-    ctx.fillStyle = this._ensureGrassPattern() || "#7BA73B";
+    // Base grass (suelo liso)
+    ctx.fillStyle = this.grassColor;
     ctx.fillRect(0, 0, mapW, mapH);
 
     // River (right edge), over grass, under roads
@@ -219,28 +183,26 @@ export class Renderer {
       }
     }
 
-    // Grass tool: above base grass (+ roads), strictly under buildings
+    // Grass / bush tool: above base grass (+ roads), strictly under buildings
     if (this.ground) {
+      const bush = this.images.get(BUSH_SPRITE);
       for (let ty = 0; ty < rows; ty++) {
         for (let tx = 0; tx < cols; tx++) {
-          const color = this.ground.colorAt(tx, ty);
-          if (!color) continue;
+          if (!this.ground.has(tx, ty)) continue;
           if (this.river?.has(tx, ty)) continue;
           // Keep roads visible on the same tile
           if (this.roads?.has(tx, ty)) continue;
-          ctx.fillStyle = color;
-          ctx.fillRect(tx * tile, ty * tile, tile, tile);
+          this._drawBush(ctx, bush, tx, ty, tile, 1);
         }
       }
     }
 
     // Ghost placement (previews under building sprites when applicable)
     if (this.hover && this.hover.ground) {
-      const { tx, ty, valid, color } = this.hover;
-      if (valid && color) {
+      const { tx, ty, valid } = this.hover;
+      if (valid) {
         ctx.globalAlpha = 0.55;
-        ctx.fillStyle = color;
-        ctx.fillRect(tx * tile, ty * tile, tile, tile);
+        this._drawBush(ctx, this.images.get(BUSH_SPRITE), tx, ty, tile, 1);
         ctx.globalAlpha = 1;
       } else {
         ctx.fillStyle = "rgba(224,122,95,0.4)";
@@ -349,6 +311,33 @@ export class Renderer {
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * Round bush sprite for the grass/bush paint tool.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {HTMLImageElement|undefined} img
+   * @param {number} tx
+   * @param {number} ty
+   * @param {number} tile
+   * @param {number} [alpha]
+   */
+  _drawBush(ctx, img, tx, ty, tile, alpha = 1) {
+    if (!img) {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#6B8E23";
+      ctx.fillRect(tx * tile + 2, ty * tile + 2, tile - 4, tile - 4);
+      ctx.globalAlpha = 1;
+      return;
+    }
+    const dw = tile * 1.2;
+    const dh = (img.height / Math.max(1, img.width)) * dw;
+    const dx = tx * tile + (tile - dw) / 2;
+    const dy = ty * tile + tile - dh + 2;
+    const prev = ctx.globalAlpha;
+    ctx.globalAlpha = prev * alpha;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.globalAlpha = prev;
   }
 
   /** Locked parcels (fog) + adjacent For Sale signs. */
