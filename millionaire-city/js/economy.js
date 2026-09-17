@@ -179,7 +179,10 @@ export function houseRewardRatePerChunk(def) {
 }
 
 /** Global cash payout scale for houses and commerces (1 = full, 0.5 = half). */
-export const CASH_REWARD_SCALE = 0.3;
+export const CASH_REWARD_SCALE = 0.15;
+
+/** Global XP gain scale (1 = full, 0.5 = half). Applies to collect and build XP. */
+export const XP_REWARD_SCALE = 0.5;
 
 /** Full-occupancy cash before influence (override with def.rewardCash). */
 export function houseFullCycleReward(def) {
@@ -207,7 +210,7 @@ export function houseIncome(def, people, influenceScaled) {
 }
 
 export function houseCollectXp(_def, cash) {
-  return Math.max(1, Math.round(cash / 10));
+  return Math.max(1, Math.round((cash / 10) * XP_REWARD_SCALE));
 }
 
 /** Fresh operational runtime for a finished house (full population by default). */
@@ -292,7 +295,7 @@ export function commerceCycleReward(def, influenceScaled = 0) {
 }
 
 export function commerceCollectXp(_def, cash) {
-  return Math.max(1, Math.round(cash / 10));
+  return Math.max(1, Math.round((cash / 10) * XP_REWARD_SCALE));
 }
 
 export function makeCommerceRuntime(def) {
@@ -485,7 +488,10 @@ export function buildPlaceXp(def) {
   if (!def) return 0;
   const cost = normalizedBuildCost(def);
   if (cost <= 0) return BUILD_PLACE_XP.min;
-  return Math.max(BUILD_PLACE_XP.min, Math.round(cost / BUILD_PLACE_XP.cashPerXp));
+  return Math.max(
+    BUILD_PLACE_XP.min,
+    Math.round((cost / BUILD_PLACE_XP.cashPerXp) * XP_REWARD_SCALE)
+  );
 }
 
 /**
