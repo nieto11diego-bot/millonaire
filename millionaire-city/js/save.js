@@ -7,12 +7,26 @@ import { TIME_SCALE, STATUS, createRuntime } from "./economy.js";
 
 export const SAVE_KEY = "mc_save_v1";
 export const SAVE_VERSION = 1;
+export const NEW_GAME_FLAG = "mc_force_new_v1";
+
+/** When false, writeSave / autosave flush become no-ops (used during new-game reset). */
+let persistEnabled = true;
+
+export function setPersistEnabled(enabled) {
+  persistEnabled = !!enabled;
+}
+
+export function isPersistEnabled() {
+  return persistEnabled;
+}
 
 /**
  * @param {object} snapshot
  * @returns {boolean}
  */
 export function writeSave(snapshot) {
+  if (!persistEnabled) return false;
+  if (!snapshot) return false;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
     return true;
@@ -301,11 +315,13 @@ export function createAutosave(buildFn, opts = {}) {
 
   function flush() {
     timer = 0;
+    if (!persistEnabled) return false;
     lastOk = writeSave(buildFn());
     return lastOk;
   }
 
   function schedule() {
+    if (!persistEnabled) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(flush, delayMs);
   }

@@ -14,7 +14,7 @@ import { EconomySim } from "./sim.js";
 import { createRuntime, formatDuration, isRoadConnected, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, buildDurationMs, buildPlaceXp, buildLevelThresholds, isConstructing } from "./economy.js";
 import { cashHtml, goldHtml, diamondHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
 import { nextLevelReward, rewardsBetween, sumRewards } from "./levelRewards.js";
-import { readSave, clearSave, buildSnapshot, applySnapshot, createAutosave } from "./save.js";
+import { readSave, clearSave, buildSnapshot, applySnapshot, createAutosave, setPersistEnabled, NEW_GAME_FLAG } from "./save.js";
 
 const TILE = 32;
 const START_CASH = 50_000_000;
@@ -63,6 +63,22 @@ let riverOptsRef = null;
 
 function scheduleSave() {
   autosave?.schedule();
+}
+
+/** Hard reset: stop persistence, wipe save, force a cold load. */
+function startNewGame() {
+  setPersistEnabled(false);
+  autosave?.cancel();
+  autosave = null;
+  clearSave();
+  try {
+    sessionStorage.setItem(NEW_GAME_FLAG, "1");
+  } catch {
+    /* ignore */
+  }
+  const url = new URL(location.href);
+  url.searchParams.set("new", String(Date.now()));
+  location.replace(url.pathname + url.search + url.hash);
 }
 
 function xpProgress(xp, level, thresholds) {
@@ -304,7 +320,20 @@ async function main() {
   zeppelin.spawn();
   fighters.spawn();
 
-  const saved = readSave();
+  const forceNewGame = (() => {
+    try {
+      if (sessionStorage.getItem(NEW_GAME_FLAG) === "1") {
+        sessionStorage.removeItem(NEW_GAME_FLAG);
+        clearSave();
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  })();
+
+  const saved = forceNewGame ? null : readSave();
   const riverOpts = saved?.river
     ? {
         seed: saved.river.seed,
@@ -1354,14 +1383,13 @@ async function main() {
       detailHtml: "Esta acción no se puede deshacer.",
       okLabel: "Nueva partida",
       danger: true,
-      onConfirm: () => {
-        // Cancel pending/autosave flush so beforeunload does not rewrite the save.
-        autosave?.cancel();
-        autosave = null;
-        clearSave();
-        location.reload();
-      },
+      onConfirm: () => startNewGame(),
     });
+  });
+
+  // Avoid restoring a stale in-memory city from the browser back-forward cache.
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) location.reload();
   });
 
   let lastTs = performance.now();
