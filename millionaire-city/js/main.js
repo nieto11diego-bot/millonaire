@@ -620,7 +620,7 @@ async function main() {
     else clearActiveTool();
   });
 
-  // Load save or place starter bungalow + HQ on the unlocked parcel
+  // Load save or place starter house + HQ on the unlocked parcel
   let loadedFromSave = false;
   if (saved) {
     const result = applySnapshot(saved, {
@@ -648,26 +648,26 @@ async function main() {
   }
 
   if (!loadedFromSave) {
-    const starter = catalog.houses.find((h) => h.name === "Bungalow") || catalog.houses[0];
-    let bungalow = null;
+    const starter = catalog.houses[0] || null;
+    let starterHouse = null;
     if (starter) {
       const foot = expansions.starterTileCenter(starter.gridW, starter.gridH);
-      bungalow = grid.place(starter, foot.tx, foot.ty);
-      if (bungalow) initBuilding(bungalow, { skipBuild: true });
+      starterHouse = grid.place(starter, foot.tx, foot.ty);
+      if (starterHouse) initBuilding(starterHouse, { skipBuild: true });
     }
     if (hqDef) {
       let hqTx = null;
       let hqTy = null;
-      if (bungalow) {
-        hqTx = bungalow.tx - hqDef.gridW - 1;
-        hqTy = bungalow.ty;
+      if (starterHouse) {
+        hqTx = starterHouse.tx - hqDef.gridW - 1;
+        hqTy = starterHouse.ty;
       }
       const hq = placeHeadquarters(grid, roads, expansions, hqDef, hqTx, hqTy, initBuilding);
-      if (hq && bungalow) connectBuildingsWithRoad(roads, expansions, grid, hq, bungalow);
-      else if (bungalow) {
-        for (let x = bungalow.tx - 1; x < bungalow.tx + bungalow.def.gridW + 1; x++) {
-          if (!expansions.isUnlocked(x, bungalow.ty + bungalow.def.gridH)) continue;
-          roads.paint(x, bungalow.ty + bungalow.def.gridH, true, () => false);
+      if (hq && starterHouse) connectBuildingsWithRoad(roads, expansions, grid, hq, starterHouse);
+      else if (starterHouse) {
+        for (let x = starterHouse.tx - 1; x < starterHouse.tx + starterHouse.def.gridW + 1; x++) {
+          if (!expansions.isUnlocked(x, starterHouse.ty + starterHouse.def.gridH)) continue;
+          roads.paint(x, starterHouse.ty + starterHouse.def.gridH, true, () => false);
         }
       }
     }

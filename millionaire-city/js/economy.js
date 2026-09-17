@@ -59,7 +59,7 @@ export function buildLevelThresholds(curve = LEVEL_XP) {
 export const BUILD_TIME = {
   minSec: 10,
   maxSec: 50 * 3600,
-  /** Matches house curve: Bungalow $50k → Petronas 30♦ ($15M). */
+  /** Matches house curve: cheapest house → Petronas 30♦ ($15M). */
   minCost: 50_000,
   maxCost: 15_000_000,
 };
@@ -240,7 +240,7 @@ export function makeHouseRuntime(def, people = null) {
  * construction cost (cash + gold/diamond equivalent).
  *
  *   reward ≈ (rewardSec / 10) × $200 × (buildCost / $50_000)
- *   → a $50k shop on a 10s cycle pays ~$200, like a bungalow chunk.
+ *   → a $50k shop on a 10s cycle pays ~$200, like a low-tier house chunk.
  */
 export const COMMERCE_REWARD = {
   chunkSec: 10,
@@ -477,7 +477,7 @@ export function normalizedBuildCost(def) {
 
 /**
  * XP granted when placing a construction.
- * Scales with purchase cost: $500 → 1 XP (Bungalow $50k → 100 XP).
+ * Scales with purchase cost: $500 → 1 XP (cheap house $50k → 100 XP).
  */
 export const BUILD_PLACE_XP = {
   cashPerXp: 900,

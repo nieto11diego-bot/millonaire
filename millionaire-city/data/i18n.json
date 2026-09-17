@@ -131,7 +131,6 @@
                  "mission.req.prior_mission":  159,
                  "mission.req.level_to_start":  160,
                  "mission.req.mission_and_level":  161,
-                 "building.bungalow":  162,
                  "building.bungalow_luxury":  163,
                  "building.townhouse":  164,
                  "building.townhouse_luxury":  165,
@@ -983,20 +982,6 @@
                                 "it":  "Costruisci un Night club e organizza una festa con 36 single!",
                                 "es":  "Â¡Construye una Discoteca y prepara una fiesta con 36 solteros!"
                             },
-                    "112":  {
-                                "en":  "Pimp my House I",
-                                "fr":  "Urbaniste 1",
-                                "de":  "Pimp mein Haus I",
-                                "it":  "Super Case I",
-                                "es":  "Tunea la casa I"
-                            },
-                    "113":  {
-                                "en":  "Build decorations next to any Bungalow to get a 12% House Bonus. Tip: You can find decorations from the Shop.",
-                                "fr":  "Construisez des dÃ©corations prÃ¨s d\u0027un de vos Bungalows pour obtenir un bonus de 12%. Les dÃ©corations sont disponibles dans le Magasin.",
-                                "de":  "Baue Dekorationen neben jedem deiner Bungalows, um 12% Hausbonus zu erhalten. Dekorationen findest du im Laden.",
-                                "it":  "Colloca decorazioni vicino a qualsiasi Bungalow e ottieni un Bonus Casa del 12%. Puoi trovare le decorazioni nel Negozio.",
-                                "es":  "Construye adornos junto a cualquier Bungalow que poseas para conseguir una bonificaciÃ³n en casas del 12%. Puedes encontrar los adornos en la tienda."
-                            },
                     "114":  {
                                 "en":  "Pimp my House II",
                                 "fr":  "Urbaniste 2",
@@ -1332,13 +1317,6 @@
                                 "de":  "Du musst Mission \u0027%0U\u0027 freigeschaltet und Level %1U haben, um diese Mission zu starten.",
                                 "it":  "Per avviare questa missione, devi aver sbloccato la missione \u0027%0U\u0027 ed essere al Livello %1U.",
                                 "es":  "Tienes que haber desbloqueado la misiÃ³n \u0027%0U\u0027 y estar en el nivel %1U para iniciar esta misiÃ³n."
-                            },
-                    "162":  {
-                                "en":  "Bungalow",
-                                "fr":  "Bungalow",
-                                "de":  "Bungalow",
-                                "it":  "Bungalow",
-                                "es":  "Bungalow"
                             },
                     "163":  {
                                 "en":  "Bungalow Luxury",
@@ -1747,11 +1725,11 @@
                                 "es":  "Comprar y ubicar hogar"
                             },
                     "222":  {
-                                "en":  "Tap on the Shop button and buy a Bungalow.\\n\\nPlace the Bungalow to the 2x2 plot.",
-                                "fr":  "Touchez le bouton Magasin et achetez un bungalow.\\n\\nPlacez-le ensuite sur la parcelle de 2x2.",
-                                "de":  "BerÃ¼hre das Laden-Symbol und kaufe einen Bungalow.\\n\\nPlatziere den Bungalow auf das 2x2-Bauland.",
-                                "it":  "Tocca il pulsante Negozio e acquista un bungalow.\\n\\nPosiziona il bungalow nel lotto 2x2.",
-                                "es":  "Toca el botÃ³n de la Tienda y compra un Bungalow.\\n\\nDespuÃ©s colÃ³calo en el terreno de 2x2."
+                                "en":  "Tap on the Shop button and buy a house.\\n\\nPlace the house on the 2x2 plot.",
+                                "fr":  "Touchez le bouton Magasin et achetez une maison.\\n\\nPlacez-la ensuite sur la parcelle de 2x2.",
+                                "de":  "BerÃ¼hre das Laden-Symbol und kaufe ein Haus.\\n\\nPlatziere das Haus auf das 2x2-Bauland.",
+                                "it":  "Tocca il pulsante Negozio e acquista una casa.\\n\\nPosiziona la casa nel lotto 2x2.",
+                                "es":  "Toca el botÃ³n de la Tienda y compra una casa.\\n\\nDespuÃ©s colÃ³cala en el terreno de 2x2."
                             },
                     "223":  {
                                 "en":  "Build roads",
@@ -1775,11 +1753,11 @@
                                 "es":  "ConstrucciÃ³n inmediata"
                             },
                     "226":  {
-                                "en":  "The construction will take some time to finish.\\n\\nTap on the Bungalow and accept Instant Build to finish the construction!",
-                                "fr":  "La construction va prendre du temps.\\n\\nSÃ©lectionnez le bungalow et acceptez la construction rapide pour terminer les travaux.",
-                                "de":  "Der Bau hat begonnen und braucht eine Weile bis er beendet ist.\\n\\nBerÃ¼hre den Bungalow und wÃ¤hle Sofortbau, um den Bau abzuschliessen!",
-                                "it":  "Il completamento della costruzione richiede tempo.\\n\\nTocca il bungalow e accetta la costruzione veloce per terminare i lavori.",
-                                "es":  "La construcciÃ³n tardarÃ¡ un tiempo en acabar.\\n\\nToca el Bungalow y acepta la ConstrucciÃ³n inmediata para finalizar la obra."
+                                "en":  "The construction will take some time to finish.\\n\\nTap on the house and accept Instant Build to finish the construction!",
+                                "fr":  "La construction va prendre du temps.\\n\\nSÃ©lectionnez la maison et acceptez la construction rapide pour terminer les travaux.",
+                                "de":  "Der Bau hat begonnen und braucht eine Weile bis er beendet ist.\\n\\nBerÃ¼hre das Haus und wÃ¤hle Sofortbau, um den Bau abzuschliessen!",
+                                "it":  "Il completamento della costruzione richiede tempo.\\n\\nTocca la casa e accetta la costruzione veloce per terminare i lavori.",
+                                "es":  "La construcciÃ³n tardarÃ¡ un tiempo en acabar.\\n\\nToca la casa y acepta la ConstrucciÃ³n inmediata para finalizar la obra."
                             },
                     "227":  {
                                 "en":  "Sign a Contract",
@@ -1789,11 +1767,11 @@
                                 "es":  "Firmar un contrato"
                             },
                     "228":  {
-                                "en":  "Time to get your first tenants.\\n\\nTap on the Bungalow and sign a rental contract.\\n\\nNotice that the signing of the contract has a cost of $90.",
-                                "fr":  "Il est temps de trouver vos premiers locataires.\\n\\nSÃ©lectionnez le bungalow et signez un contrat de location.\\n\\nVous remarquerez que la signature du contrat coÃ»te 90$.",
-                                "de":  "Zeit fÃ¼r deine ersten Mieter.\\n\\nBerÃ¼hre den Bungalow und unterschreibe einen Mietvertrag.\\n\\nBeachte, dass die Unterzeichnung des Vertrags $90 gekostet hat.",
-                                "it":  "E ora, i primi inquilini.\\n\\nTocca il bungalow e firma il contratto d\u0027affitto.\\n\\nLa firma del contratto costa $90.",
-                                "es":  "Es hora de conseguir tus primeros inquilinos.\\n\\nToca el Bungalow y firma un contrato de alquiler.\\n\\nFÃ­jate en que firmar este contrato cuesta 90$."
+                                "en":  "Time to get your first tenants.\\n\\nTap on the house and sign a rental contract.\\n\\nNotice that the signing of the contract has a cost of $90.",
+                                "fr":  "Il est temps de trouver vos premiers locataires.\\n\\nSÃ©lectionnez la maison et signez un contrat de location.\\n\\nVous remarquerez que la signature du contrat coÃ»te 90$.",
+                                "de":  "Zeit fÃ¼r deine ersten Mieter.\\n\\nBerÃ¼hre das Haus und unterschreibe einen Mietvertrag.\\n\\nBeachte, dass die Unterzeichnung des Vertrags $90 gekostet hat.",
+                                "it":  "E ora, i primi inquilini.\\n\\nTocca la casa e firma il contratto d\u0027affitto.\\n\\nLa firma del contratto costa $90.",
+                                "es":  "Es hora de conseguir tus primeros inquilinos.\\n\\nToca la casa y firma un contrato de alquiler.\\n\\nFÃ­jate en que firmar este contrato cuesta 90$."
                             },
                     "229":  {
                                 "en":  "Buy decoration",
@@ -1803,11 +1781,11 @@
                                 "es":  "Comprar un adorno"
                             },
                     "230":  {
-                                "en":  "To increase rental rates, place a decoration next to a house you own.\\n\\nGo to the Shop and select the Decoration tab, then buy a Cypress Tree and place it next to the Bungalow.\\n\\nNow the Bungalow has an income bonus of 2%.",
-                                "fr":  "Pour augmenter les frais de location, placez une dÃ©coration prÃ¨s d\u0027une de vos maisons.\\n\\nAllez au Magasin, sÃ©lectionnez l\u0027onglet DÃ©corations et achetez un cyprÃ¨s. Placez-le ensuite prÃ¨s du bungalow.\\n\\nRemarquez que le bungalow a maintenant un bonus de revenu de 2%.",
-                                "de":  "Um die Miete zu erhÃ¶hen, platziere eine Dekoration neben dein Haus.\\n\\nGeh zum Laden und wÃ¤hle das Register Dekoration, kaufe dann eine Zypresse und platziere sie neben den Bungalow.\\n\\nJetzt hat der Bungalow einen Mietbonus von 2%.",
-                                "it":  "Per aumentare gli affitti, posiziona una decorazione accanto a una tua casa.\\n\\nVai al Negozio e scegli la scheda Decorazioni, quindi compra un cipresso e posizionalo accanto al bungalow.\\n\\nOra l\u0027affitto Ã¨ aumentato del 2%.",
-                                "es":  "Para aumentar el alquiler, coloca un adorno junto a la casa de la que eres propietario.\\n\\nVete a la Tienda y selecciona la pestaÃ±a Adornos. DespuÃ©s compra un CiprÃ©s y colÃ³calo junto al Bungalow.\\n\\nAhora el Bungalow tiene una bonificaciÃ³n del 2% en los ingresos."
+                                "en":  "To increase rental rates, place a decoration next to a house you own.\\n\\nGo to the Shop and select the Decoration tab, then buy a Cypress Tree and place it next to the house.\\n\\nNow the house has an income bonus of 2%.",
+                                "fr":  "Pour augmenter les frais de location, placez une dÃ©coration prÃ¨s d\u0027une de vos maisons.\\n\\nAllez au Magasin, sÃ©lectionnez l\u0027onglet DÃ©corations et achetez un cyprÃ¨s. Placez-le ensuite prÃ¨s de la maison.\\n\\nRemarquez que la maison a maintenant un bonus de revenu de 2%.",
+                                "de":  "Um die Miete zu erhÃ¶hen, platziere eine Dekoration neben dein Haus.\\n\\nGeh zum Laden und wÃ¤hle das Register Dekoration, kaufe dann eine Zypresse und platziere sie neben das Haus.\\n\\nJetzt hat das Haus einen Mietbonus von 2%.",
+                                "it":  "Per aumentare gli affitti, posiziona una decorazione accanto a una tua casa.\\n\\nVai al Negozio e scegli la scheda Decorazioni, quindi compra un cipresso e posizionalo accanto alla casa.\\n\\nOra l\u0027affitto Ã¨ aumentato del 2%.",
+                                "es":  "Para aumentar el alquiler, coloca un adorno junto a la casa de la que eres propietario.\\n\\nVete a la Tienda y selecciona la pestaÃ±a Adornos. DespuÃ©s compra un CiprÃ©s y colÃ³calo junto a la casa.\\n\\nAhora la casa tiene una bonificaciÃ³n del 2% en los ingresos."
                             },
                     "231":  {
                                 "en":  "Collect the rent",
@@ -1817,11 +1795,11 @@
                                 "es":  "Cobrar el alquiler"
                             },
                     "232":  {
-                                "en":  "Your rent is available for collection!\\n\\nClick on the Bungalow to collect it.",
-                                "fr":  "Votre loyer est prÃªt Ã  Ãªtre prÃ©levÃ© !\\n\\nCliquez sur le bungalow pour le prÃ©lever.",
-                                "de":  "Deine Miete kann jetzt eingesammelt werden!\\n\\nKlicke auf den Bungalow, um sie einzusammeln.",
-                                "it":  "Puoi riscuotere l\u0027affitto!\\n\\nTocca il bungalow per riscuoterlo.",
-                                "es":  "Â¡Tienes disponible el cobro del alquiler!\\n\\nHaz clic en el Bungalow para recaudarlo."
+                                "en":  "Your rent is available for collection!\\n\\nClick on the house to collect it.",
+                                "fr":  "Votre loyer est prÃªt Ã  Ãªtre prÃ©levÃ© !\\n\\nCliquez sur la maison pour le prÃ©lever.",
+                                "de":  "Deine Miete kann jetzt eingesammelt werden!\\n\\nKlicke auf das Haus, um sie einzusammeln.",
+                                "it":  "Puoi riscuotere l\u0027affitto!\\n\\nTocca la casa per riscuoterlo.",
+                                "es":  "Â¡Tienes disponible el cobro del alquiler!\\n\\nHaz clic en la casa para recaudarlo."
                             },
                     "233":  {
                                 "en":  "That\u0027s it!",

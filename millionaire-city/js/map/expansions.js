@@ -128,7 +128,7 @@ export class ExpansionLayer {
     };
   }
 
-  /** Center tile of the starter parcel (for bungalow). */
+  /** Center tile of the starter parcel (for the first house). */
   starterTileCenter(footW = 2, footH = 2) {
     const tx = this.startZx * this.zoneW + Math.floor((this.zoneW - footW) / 2);
     const ty = this.startZy * this.zoneH + Math.floor((this.zoneH - footH) / 2);

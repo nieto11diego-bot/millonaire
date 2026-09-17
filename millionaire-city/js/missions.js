@@ -260,7 +260,6 @@ export class MissionTracker {
 
     // House bonus % missions — best house of each type
     const bonusSkus = [
-      { sku: 23, objectId: 0 }, // bungalow 12%
       { sku: 24, objectId: 1 }, // bungalow luxury 16%
       { sku: 25, objectId: 2 }, // townhouse 30%
       { sku: 26, objectId: 10 }, // villa 90%

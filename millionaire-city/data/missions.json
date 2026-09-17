@@ -112,25 +112,6 @@
                          "confidence":  "dex-verified"
                      },
                      {
-                         "sku":  23,
-                         "type":  "bonus_bungalow",
-                         "titleTid":  112,
-                         "title":  "Pimp my House I",
-                         "descriptionTid":  113,
-                         "description":  "Build decorations next to any Bungalow to get a 12% House Bonus. Tip: You can find decorations from the Shop.",
-                         "rewardCash":  25000,
-                         "unlockLevel":  1,
-                         "unlockSku":  null,
-                         "target":  {
-                                        "amount":  1,
-                                        "condition":  12,
-                                        "metric":  "house_bonus_percent",
-                                        "value":  12,
-                                        "source":  "dex-verified"
-                                    },
-                         "confidence":  "dex-verified"
-                     },
-                     {
                          "sku":  24,
                          "type":  "bonus_bungalow_luxury",
                          "titleTid":  114,
@@ -139,7 +120,7 @@
                          "description":  "Build decorations next to any Bungalow Luxury to get a 16% House Bonus. Tip: You can find decorations from the Shop.",
                          "rewardCash":  60000,
                          "unlockLevel":  1,
-                         "unlockSku":  23,
+                         "unlockSku":  null,
                          "target":  {
                                         "amount":  1,
                                         "condition":  16,
