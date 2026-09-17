@@ -30,15 +30,14 @@
                                      "confidence":  "dex-verified"
                                  },
                   "wonders":  {
-                                  "description":  "Wonders within influenceRadiusTiles add rewardBonusScaled to house rent and commerce payouts (100 ~= 1%). Also produce gold every 8h and diamonds every 24h.",
+                                  "description":  "cityBonusScaled; 500 ~= 5% city-wide. Also produce gold every 8h and diamonds every 24h (1 each by default).",
                                   "production":  {
                                                      "goldIntervalSec":  28800,
                                                      "goldReward":  1,
                                                      "diamondIntervalSec":  86400,
                                                      "diamondReward":  1
                                                  },
-                                  "confidence":  "custom",
-                                  "scale":  "100 scaled units ~= 1%"
+                                  "confidence":  "custom"
                               },
                   "commerce":  {
                                    "description":  "Commerces earn cash on a fixed rewardSec cycle. Payout scales with construction cost (same timer/collect loop as houses).",
@@ -988,10 +987,10 @@
                           "exp":  120,
                           "gridW":  3,
                           "gridH":  3,
-                          "costCoins":  60000,
+                          "costCoins":  10000,
                           "costFortune":  0,
                           "buildTimeSec":  30,
-                          "rewardSec":  30,
+                          "rewardSec":  10,
                           "anm":  "ANM_COMMERCE_PIZZA_3X3",
                           "spriteFile":  "resources/r1_0649.png",
                           "confidence":  "dex-verified",
@@ -999,8 +998,7 @@
                           "forSale":  -1,
                           "width":  102,
                           "height":  120,
-                          "spriteConfidence":  "dex-verified",
-                          "rewardCash":  200
+                          "spriteConfidence":  "dex-verified"
                       },
                       {
                           "objectId":  18,
@@ -1023,8 +1021,7 @@
                           "forSale":  -1,
                           "width":  105,
                           "height":  118,
-                          "spriteConfidence":  "dex-verified",
-                          "rewardCash":  1000
+                          "spriteConfidence":  "dex-verified"
                       },
                       {
                           "objectId":  19,
@@ -1047,8 +1044,7 @@
                           "forSale":  -1,
                           "width":  105,
                           "height":  113,
-                          "spriteConfidence":  "dex-verified",
-                          "rewardCash":  7500
+                          "spriteConfidence":  "dex-verified"
                       },
                       {
                           "objectId":  20,
@@ -1072,7 +1068,7 @@
                           "width":  132,
                           "height":  121,
                           "spriteConfidence":  "dex-verified",
-                          "rewardCash":  38000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  21,
@@ -1096,7 +1092,7 @@
                           "width":  134,
                           "height":  122,
                           "spriteConfidence":  "dex-verified",
-                          "rewardCash":  72000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  22,
@@ -1120,7 +1116,7 @@
                           "width":  136,
                           "height":  111,
                           "spriteConfidence":  "dex-verified",
-                          "rewardCash":  138000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  23,
@@ -1144,7 +1140,7 @@
                           "width":  192,
                           "height":  122,
                           "spriteConfidence":  "dex-verified",
-                          "rewardCash":  440000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  24,
@@ -1168,7 +1164,7 @@
                           "width":  96,
                           "height":  119,
                           "spriteConfidence":  "dex-verified",
-                          "rewardCash":  650000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  25,
@@ -1192,7 +1188,7 @@
                           "width":  168,
                           "height":  103,
                           "spriteConfidence":  "dex-verified",
-                          "rewardCash":  1200000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  26,
@@ -1217,7 +1213,7 @@
                           "height":  116,
                           "spriteConfidence":  "dex-verified",
                           "costDiamonds":  30,
-                          "rewardCash":  2500000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  154,
@@ -1241,7 +1237,7 @@
                           "width":  107,
                           "height":  128,
                           "spriteConfidence":  "descriptor-resolved",
-                          "rewardCash":  4000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  159,
@@ -1265,7 +1261,7 @@
                           "width":  104,
                           "height":  136,
                           "spriteConfidence":  "descriptor-resolved",
-                          "rewardCash":  20000
+                          "rewardFactor":  0.5
                       },
                       {
                           "objectId":  224,
@@ -1649,14 +1645,13 @@
                         "anm":  "ANM_WONDERS_03B_4X4",
                         "spriteFile":  "resources/r1_0675.png",
                         "confidence":  "dex-verified",
+                        "cityBonusScaled":  250,
+                        "cityBonusPercentApprox":  2.5,
+                        "influenceRadiusTiles":  6,
                         "instantBuildFactor":  1000,
                         "width":  134,
                         "height":  195,
-                        "spriteConfidence":  "dex-verified",
-                        "rewardBonusScaled":  250,
-                        "rewardBonusPercentApprox":  2.5,
-                        "influenceRadiusTiles":  6,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "dex-verified"
                     },
                     {
                         "objectId":  35,
@@ -1675,14 +1670,13 @@
                         "anm":  "ANM_WONDERS_01B_4X5",
                         "spriteFile":  "resources/r1_0698.png",
                         "confidence":  "dex-verified",
+                        "cityBonusScaled":  330,
+                        "cityBonusPercentApprox":  3.3,
+                        "influenceRadiusTiles":  7,
                         "instantBuildFactor":  2000,
                         "width":  167,
                         "height":  166,
-                        "spriteConfidence":  "dex-verified",
-                        "rewardBonusScaled":  330,
-                        "rewardBonusPercentApprox":  3.3,
-                        "influenceRadiusTiles":  7,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "dex-verified"
                     },
                     {
                         "objectId":  36,
@@ -1701,14 +1695,13 @@
                         "anm":  "ANM_WONDERS_02B_4X5",
                         "spriteFile":  "resources/r1_0671.png",
                         "confidence":  "dex-verified",
+                        "cityBonusScaled":  450,
+                        "cityBonusPercentApprox":  4.5,
+                        "influenceRadiusTiles":  7,
                         "instantBuildFactor":  3000,
                         "width":  170,
                         "height":  154,
-                        "spriteConfidence":  "dex-verified",
-                        "rewardBonusScaled":  450,
-                        "rewardBonusPercentApprox":  4.5,
-                        "influenceRadiusTiles":  7,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "dex-verified"
                     },
                     {
                         "objectId":  152,
@@ -1727,14 +1720,13 @@
                         "anm":  "ANM_R1_0468",
                         "spriteFile":  "resources/r5_0049.png",
                         "confidence":  "dex-verified",
+                        "cityBonusScaled":  700,
+                        "cityBonusPercentApprox":  7,
+                        "influenceRadiusTiles":  8,
                         "instantBuildFactor":  4000,
                         "width":  129,
                         "height":  145,
-                        "spriteConfidence":  "descriptor-resolved",
-                        "rewardBonusScaled":  700,
-                        "rewardBonusPercentApprox":  7,
-                        "influenceRadiusTiles":  8,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "descriptor-resolved"
                     },
                     {
                         "objectId":  160,
@@ -1753,14 +1745,13 @@
                         "anm":  "ANM_R1_0488",
                         "spriteFile":  "resources/r5_0075.png",
                         "confidence":  "dex-verified",
+                        "cityBonusScaled":  2500,
+                        "cityBonusPercentApprox":  25,
+                        "influenceRadiusTiles":  10,
                         "instantBuildFactor":  5000,
                         "width":  161,
                         "height":  153,
-                        "spriteConfidence":  "descriptor-resolved",
-                        "rewardBonusScaled":  2500,
-                        "rewardBonusPercentApprox":  25,
-                        "influenceRadiusTiles":  10,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "descriptor-resolved"
                     },
                     {
                         "objectId":  200,
@@ -1779,14 +1770,13 @@
                         "anm":  "ANM_WONDER_ARC_TRIUMPHE_5X4",
                         "spriteFile":  "arc_triomphe.png",
                         "confidence":  "custom",
+                        "cityBonusScaled":  1200,
+                        "cityBonusPercentApprox":  12,
+                        "influenceRadiusTiles":  8,
                         "instantBuildFactor":  2500,
                         "width":  180,
                         "height":  180,
-                        "spriteConfidence":  "custom-photo",
-                        "rewardBonusScaled":  1200,
-                        "rewardBonusPercentApprox":  12,
-                        "influenceRadiusTiles":  8,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "custom-photo"
                     },
                     {
                         "objectId":  202,
@@ -1805,14 +1795,13 @@
                         "anm":  "ANM_WONDER_COLOSSEUM_4X2",
                         "spriteFile":  "colosseum.png",
                         "confidence":  "custom",
+                        "cityBonusScaled":  1800,
+                        "cityBonusPercentApprox":  18,
+                        "influenceRadiusTiles":  9,
                         "instantBuildFactor":  3500,
                         "width":  140,
                         "height":  138,
-                        "spriteConfidence":  "custom-photo",
-                        "rewardBonusScaled":  1800,
-                        "rewardBonusPercentApprox":  18,
-                        "influenceRadiusTiles":  9,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "custom-photo"
                     },
                     {
                         "objectId":  203,
@@ -1831,14 +1820,13 @@
                         "anm":  "ANM_WONDER_EIFFEL_TOWER_3X3",
                         "spriteFile":  "eiffel_tower.png",
                         "confidence":  "custom",
+                        "cityBonusScaled":  1100,
+                        "cityBonusPercentApprox":  11,
+                        "influenceRadiusTiles":  9,
                         "instantBuildFactor":  4000,
                         "width":  170,
                         "height":  357,
-                        "spriteConfidence":  "custom-photo",
-                        "rewardBonusScaled":  1100,
-                        "rewardBonusPercentApprox":  11,
-                        "influenceRadiusTiles":  9,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "custom-photo"
                     },
                     {
                         "objectId":  204,
@@ -1848,7 +1836,7 @@
                         "descTid":  -1,
                         "level":  16,
                         "exp":  3000,
-                        "gridW":  5,
+                        "gridW":  7,
                         "gridH":  3,
                         "costCoins":  1500000,
                         "costFortune":  0,
@@ -1857,14 +1845,13 @@
                         "anm":  "ANM_WONDER_NOTRE_DAME_5X3",
                         "spriteFile":  "notre_dame.png",
                         "confidence":  "custom",
-                        "instantBuildFactor":  3500,
-                        "width":  160,
-                        "height":  160,
-                        "spriteConfidence":  "custom-photo",
-                        "rewardBonusScaled":  900,
-                        "rewardBonusPercentApprox":  9,
+                        "cityBonusScaled":  900,
+                        "cityBonusPercentApprox":  9,
                         "influenceRadiusTiles":  7,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "instantBuildFactor":  3500,
+                        "width":  224,
+                        "height":  260,
+                        "spriteConfidence":  "custom-photo"
                     },
                     {
                         "objectId":  205,
@@ -1883,14 +1870,13 @@
                         "anm":  "ANM_WONDER_TORRE_PISA_4X3",
                         "spriteFile":  "torre_pisa.png",
                         "confidence":  "custom",
+                        "cityBonusScaled":  1800,
+                        "cityBonusPercentApprox":  18,
+                        "influenceRadiusTiles":  10,
                         "instantBuildFactor":  5000,
                         "width":  130,
                         "height":  310,
-                        "spriteConfidence":  "custom-photo",
-                        "rewardBonusScaled":  1800,
-                        "rewardBonusPercentApprox":  18,
-                        "influenceRadiusTiles":  10,
-                        "bonusNote":  "100 scaled ~= 1% toward house/commerce rewards in radius; uses (influence+10000)/10000"
+                        "spriteConfidence":  "custom-photo"
                     }
                 ],
     "services":  [
