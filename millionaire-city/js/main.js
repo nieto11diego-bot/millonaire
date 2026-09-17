@@ -1355,6 +1355,9 @@ async function main() {
       okLabel: "Nueva partida",
       danger: true,
       onConfirm: () => {
+        // Cancel pending/autosave flush so beforeunload does not rewrite the save.
+        autosave?.cancel();
+        autosave = null;
         clearSave();
         location.reload();
       },
