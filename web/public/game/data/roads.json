@@ -1,0 +1,22 @@
+{
+  "tileSize": 32,
+  "costCoins": 500,
+  "spritesPath": "assets/roads/",
+  "comment": "N=1 E=2 S=4 W=8. Custom 32x32 straights/curves/tees (seamless). Cross only mask 15. Zebra is a manual overlay kind.",
+  "straightNS": "straight_ns.png",
+  "straightEW": "straight_ew.png",
+  "cross": "cross.png",
+  "zebra": "r1_0623.png",
+  "curves": {
+    "3": "curve_ne.png",
+    "6": "curve_es.png",
+    "9": "curve_nw.png",
+    "12": "curve_sw.png"
+  },
+  "tees": {
+    "7": "tee_nes.png",
+    "11": "tee_new.png",
+    "13": "tee_nsw.png",
+    "14": "tee_esw.png"
+  }
+}
