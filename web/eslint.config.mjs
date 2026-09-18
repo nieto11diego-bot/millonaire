@@ -1,4 +1,4 @@
 /** @type {import('eslint').Linter.Config[]} */
-const eslintConfig = [];
+const eslintConfig = [{}];
 
 export default eslintConfig;
