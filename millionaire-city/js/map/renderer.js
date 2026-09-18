@@ -286,10 +286,10 @@ export class Renderer {
   }
 
   /**
-   * Light-gray picket fences along every expansion zone edge (MC-style).
-   * Shared edges are drawn once; river / road tiles are skipped as openings.
-   * Edges next to unowned land are outset a few px so sprites on the parcel
-   * rim do not sit under the pickets.
+   * Light-gray picket fences along the owned-land perimeter (MC-style).
+   * Shared edges between two owned parcels are omitted; river / road tiles
+   * are skipped as openings. Edges next to unowned land are outset a few px
+   * so sprites on the parcel rim do not sit under the pickets.
    */
   _drawExpansionFences() {
     const exp = this.expansions;
@@ -299,12 +299,13 @@ export class Renderer {
     /** @type {number} px gap between owned parcel content and fence */
     const outset = 5;
 
-    // Horizontal edges (zy = 0 .. zonesY inclusive)
+    // Horizontal edges (zy = 0 .. zonesY inclusive) — only owned↔unowned perimeter
     for (let zy = 0; zy <= zonesY; zy++) {
       const y = zy * zoneH * tile;
       for (let zx = 0; zx < zonesX; zx++) {
         const aboveOwned = zy > 0 && exp.isOwnedZone(zx, zy - 1);
         const belowOwned = zy < zonesY && exp.isOwnedZone(zx, zy);
+        if (aboveOwned === belowOwned) continue;
         let yDraw = y;
         if (aboveOwned && !belowOwned) yDraw = y + outset;
         else if (!aboveOwned && belowOwned) yDraw = y - outset;
@@ -313,12 +314,13 @@ export class Renderer {
       }
     }
 
-    // Vertical edges (zx = 0 .. zonesX inclusive)
+    // Vertical edges (zx = 0 .. zonesX inclusive) — only owned↔unowned perimeter
     for (let zx = 0; zx <= zonesX; zx++) {
       const x = zx * zoneW * tile;
       for (let zy = 0; zy < zonesY; zy++) {
         const leftOwned = zx > 0 && exp.isOwnedZone(zx - 1, zy);
         const rightOwned = zx < zonesX && exp.isOwnedZone(zx, zy);
+        if (leftOwned === rightOwned) continue;
         let xDraw = x;
         if (leftOwned && !rightOwned) xDraw = x + outset;
         else if (!leftOwned && rightOwned) xDraw = x - outset;

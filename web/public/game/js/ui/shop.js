@@ -137,6 +137,13 @@ export class ShopUI {
     const stage = this.root.closest(".stage") || document.body;
     const sr = stage.getBoundingClientRect();
     const br = btn.getBoundingClientRect();
+    const narrow = window.matchMedia("(max-width: 800px)").matches;
+    if (narrow) {
+      return {
+        left: Math.min(Math.max(br.left - sr.left + br.width / 2, 90), sr.width - 90),
+        top: Math.max(24, br.top - sr.top - 12),
+      };
+    }
     // Anchor just past the shop panel so the tip sits on the map, not under the tray.
     const shopRight = this.root.getBoundingClientRect().right;
     return {
@@ -155,11 +162,65 @@ export class ShopUI {
     }
     const show = () => this.onHover(item, this._tipPos(btn));
     const hide = () => this.onHover(null);
-    btn.addEventListener("pointerenter", show);
-    btn.addEventListener("pointermove", show);
+    const finePointer = () =>
+      window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+    btn.addEventListener("pointerenter", (e) => {
+      if (e.pointerType === "mouse" || finePointer()) show();
+    });
+    btn.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "mouse" || finePointer()) show();
+    });
     btn.addEventListener("pointerleave", hide);
-    btn.addEventListener("mouseenter", show);
+    btn.addEventListener("mouseenter", () => {
+      if (finePointer()) show();
+    });
     btn.addEventListener("mouseleave", hide);
+
+    // Touch: long-press shows catalog info without selecting.
+    const LONG_MS = 420;
+    const MOVE_PX = 12;
+    let timer = 0;
+    let sx = 0;
+    let sy = 0;
+    let armed = false;
+    const clear = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = 0;
+      }
+    };
+    btn.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      armed = false;
+      sx = e.clientX;
+      sy = e.clientY;
+      clear();
+      timer = window.setTimeout(() => {
+        timer = 0;
+        armed = true;
+        show();
+      }, LONG_MS);
+    });
+    btn.addEventListener("pointermove", (e) => {
+      if (!timer || e.pointerType === "mouse") return;
+      const dx = e.clientX - sx;
+      const dy = e.clientY - sy;
+      if (dx * dx + dy * dy >= MOVE_PX * MOVE_PX) clear();
+    });
+    btn.addEventListener("pointerup", clear);
+    btn.addEventListener("pointercancel", clear);
+    btn.addEventListener(
+      "click",
+      (e) => {
+        if (!armed) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        armed = false;
+      },
+      true
+    );
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
   render() {

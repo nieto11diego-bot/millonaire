@@ -2,7 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Millionaire City — prototipo mapa</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,7 +19,8 @@
 
       <header class="hud-top">
         <div class="hud-left">
-          <div class="xp-hud" id="xp-hud">
+          <a href="/" class="site-menu-link" title="Volver al menú" data-tip="Volver al menú principal">Menú</a>
+          <div class="xp-hud" id="xp-hud" data-tip="Mantén pulsado para ver las próximas recompensas de nivel">
             <div class="xp-star"><span id="level">1</span></div>
             <div class="xp-track">
               <div class="xp-fill" id="xp-fill"></div>
@@ -33,15 +37,15 @@
           <h1>Millionaire City</h1>
         </div>
         <div class="hud-money">
-          <div class="money-row" title="Dólares">
+          <div class="money-row" title="Dólares" data-tip="Dólares: dinero para construir y ampliar">
             <img class="money-icon" src="assets/ui/icon_cash.png" alt="" />
             <strong id="cash">50000000</strong>
           </div>
-          <div class="money-row money-row--gold" title="Lingotes de oro">
+          <div class="money-row money-row--gold" title="Lingotes de oro" data-tip="Lingotes de oro: moneda premium">
             <img class="money-icon" src="assets/ui/icon_gold.svg" alt="" />
             <strong id="gold">50</strong>
           </div>
-          <div class="money-row money-row--diamond" title="Diamantes">
+          <div class="money-row money-row--diamond" title="Diamantes" data-tip="Diamantes: moneda rara para edificios especiales">
             <img class="money-icon money-icon--diamond" src="assets/ui/icon_diamond.svg" alt="" />
             <strong id="diamonds">0</strong>
           </div>
@@ -62,35 +66,36 @@
         </div>
       </aside>
       <div id="building-tooltip" class="bldg-tip" hidden></div>
+      <div id="control-tip" class="control-tip" hidden></div>
 
       <div class="zoom-stack">
-        <button type="button" id="zoom-in" class="zoom-btn" title="Acercar">+</button>
-        <button type="button" id="zoom-out" class="zoom-btn" title="Alejar">−</button>
+        <button type="button" id="zoom-in" class="zoom-btn" title="Acercar" data-tip="Acercar mapa">+</button>
+        <button type="button" id="zoom-out" class="zoom-btn" title="Alejar" data-tip="Alejar mapa">−</button>
         <input type="range" id="zoom" min="0.2" max="2" step="0.05" value="1" hidden />
       </div>
 
       <nav class="dock" aria-label="Herramientas">
         <div class="dock-inner">
-          <button type="button" class="dock-btn advisor-btn" id="btn-missions" title="Misiones">
+          <button type="button" class="dock-btn advisor-btn" id="btn-missions" title="Misiones" data-tip="Misiones: objetivos y recompensas">
             <span class="dock-glyph missions" aria-hidden="true">?</span>
             <em class="badge" id="missions-badge" hidden>0</em>
           </button>
-          <button type="button" class="dock-btn" id="btn-shop" title="Tienda" aria-pressed="true">
+          <button type="button" class="dock-btn" id="btn-shop" title="Tienda" aria-pressed="true" data-tip="Tienda: casas, comercios, decoración y maravillas">
             <span class="dock-glyph house" aria-hidden="true"></span>
           </button>
-          <button type="button" class="dock-btn" id="btn-road" title="Construir carreteras" aria-pressed="false">
+          <button type="button" class="dock-btn" id="btn-road" title="Construir carreteras" aria-pressed="false" data-tip="Carreteras: conecta edificios al Headquarters">
             <img class="dock-glyph dock-glyph--img dock-glyph--road" src="assets/roads/straight_ew.png" alt="" />
           </button>
-          <button type="button" class="dock-btn active" id="btn-pan" title="Puntero: seleccionar y mover cámara" aria-pressed="true">
+          <button type="button" class="dock-btn active" id="btn-pan" title="Puntero: seleccionar y mover cámara" aria-pressed="true" data-tip="Puntero: tocar para interactuar, arrastrar para mover el mapa">
             <img class="dock-glyph dock-glyph--img dock-glyph--pan" src="assets/ui/icon_pointer.png" alt="" />
           </button>
-          <button type="button" class="dock-btn" id="btn-erase" title="Borrar">
+          <button type="button" class="dock-btn" id="btn-erase" title="Borrar" data-tip="Excavadora: destruye carreteras o edificios (reembolso 50%)">
             <img class="dock-glyph dock-glyph--img dock-glyph--erase" src="assets/ui/icon_excavator.png" alt="" />
           </button>
-          <button type="button" class="dock-btn" id="btn-move" title="Mover edificios y decoración">
+          <button type="button" class="dock-btn" id="btn-move" title="Mover edificios y decoración" data-tip="Mover: recoloca edificios (cuesta el 10% del precio)">
             <img class="dock-glyph dock-glyph--img dock-glyph--move" src="assets/ui/icon_move.png" alt="" />
           </button>
-          <button type="button" class="dock-btn dock-btn--danger" id="btn-new-game" title="Nueva partida">
+          <button type="button" class="dock-btn dock-btn--danger" id="btn-new-game" title="Nueva partida" data-tip="Nueva partida: borra el progreso y empieza de cero">
             <span class="dock-glyph new-game" aria-hidden="true"></span>
           </button>
         </div>

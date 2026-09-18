@@ -11,6 +11,7 @@ import { ShopUI } from "./ui/shop.js";
 import { MissionTracker, companyValueFromGrid } from "./missions.js";
 import { MissionsUI } from "./ui/missions.js";
 import { BuildingTooltip } from "./ui/tooltip.js";
+import { ControlTip, bindControlInfo } from "./ui/controlTip.js";
 import { EconomySim } from "./sim.js";
 import { createRuntime, formatDuration, isConnectedToHQ, isHQ, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, buildDurationMs, buildPlaceXp, buildLevelThresholds, isConstructing, usesLootEconomy, getBuildingFinalProduction, effectiveMaxLoot } from "./economy.js";
 import { cashHtml, goldHtml, diamondHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
@@ -763,6 +764,92 @@ async function main() {
   let downY = 0;
   let lastPaintKey = "";
   const DRAG_THRESHOLD = 6;
+  const LONG_PRESS_MS = 450;
+  const LONG_PRESS_MOVE_PX = 12;
+
+  /** @type {Map<number, { x: number, y: number }>} */
+  const activePointers = new Map();
+  /** @type {{ dist: number, zoom: number, midX: number, midY: number } | null} */
+  let pinch = null;
+  /** Suppress building tap after a long-press info reveal. */
+  let longPressConsumed = false;
+  let mapLongPressTimer = 0;
+  /** Keep building tip visible after a touch long-press until next map tap. */
+  let tipPinned = false;
+
+  const controlTip = new ControlTip(document.getElementById("control-tip"));
+
+  function tipTextOf(el) {
+    return el?.getAttribute("data-tip") || el?.getAttribute("title") || "";
+  }
+
+  document.querySelectorAll("[data-tip]").forEach((el) => {
+    if (el.id === "xp-hud") return;
+    bindControlInfo(el, () => tipTextOf(el), controlTip, { hover: false });
+  });
+  if (xpHudEl) {
+    // Touch: long-press opens the next-level rewards card (same as desktop hover).
+    let xpTimer = 0;
+    let xpArmed = false;
+    xpHudEl.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      xpArmed = false;
+      const sx = e.clientX;
+      const sy = e.clientY;
+      if (xpTimer) clearTimeout(xpTimer);
+      xpTimer = window.setTimeout(() => {
+        xpTimer = 0;
+        xpArmed = true;
+        showLevelRewardTip();
+        if (navigator.vibrate) {
+          try {
+            navigator.vibrate(18);
+          } catch {
+            /* ignore */
+          }
+        }
+      }, LONG_PRESS_MS);
+      const onMove = (ev) => {
+        if (!xpTimer) return;
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) >= LONG_PRESS_MOVE_PX) {
+          clearTimeout(xpTimer);
+          xpTimer = 0;
+        }
+      };
+      const onEnd = () => {
+        if (xpTimer) {
+          clearTimeout(xpTimer);
+          xpTimer = 0;
+        }
+        xpHudEl.removeEventListener("pointermove", onMove);
+        xpHudEl.removeEventListener("pointerup", onEnd);
+        xpHudEl.removeEventListener("pointercancel", onEnd);
+      };
+      xpHudEl.addEventListener("pointermove", onMove);
+      xpHudEl.addEventListener("pointerup", onEnd);
+      xpHudEl.addEventListener("pointercancel", onEnd);
+    });
+    xpHudEl.addEventListener(
+      "click",
+      (e) => {
+        if (!xpArmed) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        xpArmed = false;
+      },
+      true
+    );
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (!levelRewardTipEl || levelRewardTipEl.hidden) return;
+        if (xpHudEl.contains(/** @type {Node} */ (e.target)) || levelRewardTipEl.contains(/** @type {Node} */ (e.target)))
+          return;
+        hideLevelRewardTip();
+      },
+      true
+    );
+  }
 
   function clearActiveTool() {
     moveDrag = null;
@@ -836,6 +923,82 @@ async function main() {
     zoomInput.min = String(zoomMin());
     zoomInput.value = String(Math.round(z * 100) / 100);
     renderer.camera.zoom = Number(zoomInput.value);
+  }
+  /** Zoom while keeping a screen point fixed in world space (pinch / wheel). */
+  function applyZoomAt(z, screenX, screenY) {
+    const before = renderer.screenToWorld(screenX, screenY);
+    applyZoom(z);
+    const after = renderer.screenToWorld(screenX, screenY);
+    renderer.camera.x += before.x - after.x;
+    renderer.camera.y += before.y - after.y;
+  }
+  function pointerMidpoint(a, b) {
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+  function pointerDist(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.hypot(dx, dy) || 1;
+  }
+  function beginPinch() {
+    if (activePointers.size < 2) return;
+    const pts = [...activePointers.values()];
+    const mid = pointerMidpoint(pts[0], pts[1]);
+    pinch = {
+      dist: pointerDist(pts[0], pts[1]),
+      zoom: renderer.camera.zoom,
+      midX: mid.x,
+      midY: mid.y,
+    };
+    pendingInteract = null;
+    longPressConsumed = true;
+    clearMapLongPress();
+    camDragging = false;
+    paintDragging = false;
+    canvas.classList.remove("dragging");
+    tooltip.hide();
+    tipPinned = false;
+  }
+  function updatePinch() {
+    if (!pinch || activePointers.size < 2) return;
+    const pts = [...activePointers.values()];
+    const mid = pointerMidpoint(pts[0], pts[1]);
+    const dist = pointerDist(pts[0], pts[1]);
+    const nextZoom = pinch.zoom * (dist / pinch.dist);
+    applyZoomAt(nextZoom, mid.x, mid.y);
+    // Pan with the midpoint so the gesture feels glued to the fingers.
+    const z = renderer.camera.zoom;
+    renderer.camera.x -= (mid.x - pinch.midX) / z;
+    renderer.camera.y -= (mid.y - pinch.midY) / z;
+    pinch.midX = mid.x;
+    pinch.midY = mid.y;
+  }
+  function clearMapLongPress() {
+    if (mapLongPressTimer) {
+      clearTimeout(mapLongPressTimer);
+      mapLongPressTimer = 0;
+    }
+  }
+  function scheduleMapLongPress(building) {
+    clearMapLongPress();
+    if (!building) return;
+    const cat = building.def?.category;
+    if (cat !== "house" && cat !== "commercial" && cat !== "wonder") return;
+    mapLongPressTimer = window.setTimeout(() => {
+      mapLongPressTimer = 0;
+      const anchor = renderer.buildingAnchorScreen(building);
+      tooltip.show(building, { left: anchor.x, top: anchor.y });
+      tipPinned = true;
+      pendingInteract = null;
+      longPressConsumed = true;
+      if (navigator.vibrate) {
+        try {
+          navigator.vibrate(18);
+        } catch {
+          /* ignore */
+        }
+      }
+    }, LONG_PRESS_MS);
   }
   zoomInput.min = String(zoomMin());
   zoomInput.addEventListener("input", (e) => {
@@ -1186,15 +1349,30 @@ async function main() {
   canvas.addEventListener("pointerdown", (e) => {
     canvas.setPointerCapture(e.pointerId);
     const p = pointerPos(e);
+    activePointers.set(e.pointerId, p);
+
+    if (activePointers.size >= 2) {
+      beginPinch();
+      return;
+    }
+
+    if (tipPinned) {
+      tooltip.hide();
+      tipPinned = false;
+    }
+    controlTip.hide();
+
     downX = p.x;
     downY = p.y;
     pendingInteract = null;
+    longPressConsumed = false;
+    clearMapLongPress();
 
     if (e.button === 1 || e.shiftKey) {
       startCamDrag(p);
       return;
     }
-    if (e.button !== 0) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
 
     const { tx, ty } = tileFromEvent(e);
     lastPaintKey = `${tx},${ty}`;
@@ -1211,6 +1389,7 @@ async function main() {
         pendingInteract = hit;
         lastX = p.x;
         lastY = p.y;
+        scheduleMapLongPress(hit);
       } else {
         startCamDrag(p);
       }
@@ -1343,6 +1522,7 @@ async function main() {
       pendingInteract = hit;
       lastX = p.x;
       lastY = p.y;
+      scheduleMapLongPress(hit);
     } else {
       startCamDrag(p);
     }
@@ -1350,6 +1530,14 @@ async function main() {
 
   canvas.addEventListener("pointermove", (e) => {
     const p = pointerPos(e);
+    if (activePointers.has(e.pointerId)) {
+      activePointers.set(e.pointerId, p);
+    }
+
+    if (pinch && activePointers.size >= 2) {
+      updatePinch();
+      return;
+    }
 
     // Convert a pending building tap into a pan if the pointer moves enough
     if (pendingInteract && !camDragging) {
@@ -1357,9 +1545,15 @@ async function main() {
       const dy = p.y - downY;
       if (dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD) {
         pendingInteract = null;
+        clearMapLongPress();
         startCamDrag({ x: downX, y: downY });
         lastX = p.x;
         lastY = p.y;
+      } else if (
+        mapLongPressTimer &&
+        dx * dx + dy * dy >= LONG_PRESS_MOVE_PX * LONG_PRESS_MOVE_PX
+      ) {
+        clearMapLongPress();
       }
     }
 
@@ -1371,7 +1565,24 @@ async function main() {
       lastY = p.y;
       renderer.radiusFocus = null;
       renderer.highlight = null;
-      tooltip.hide();
+      if (!tipPinned) tooltip.hide();
+      return;
+    }
+
+    // Touch/pen: skip hover tooltips while finger is down (avoids flicker); desktop mouse keeps hover.
+    if (e.pointerType !== "mouse") {
+      if (paintDragging && state.mode === "road") {
+        const { tx, ty } = tileFromEvent(e);
+        const key = `${tx},${ty}`;
+        if (key !== lastPaintKey) {
+          lastPaintKey = key;
+          paintRoadAt(tx, ty);
+        }
+      }
+      if (moveDrag) {
+        const { tx, ty } = tileFromEvent(e);
+        updateMoveHover(tx, ty);
+      }
       return;
     }
 
@@ -1489,15 +1700,42 @@ async function main() {
     }
   });
 
-  canvas.addEventListener("pointerup", () => {
-    if (pendingInteract && !camDragging) {
+  function endPointer(e) {
+    activePointers.delete(e.pointerId);
+    clearMapLongPress();
+
+    if (pinch) {
+      if (activePointers.size < 2) {
+        pinch = null;
+        // Continue panning with the remaining finger if any.
+        if (activePointers.size === 1) {
+          const rem = [...activePointers.values()][0];
+          startCamDrag(rem);
+          lastX = rem.x;
+          lastY = rem.y;
+        }
+      }
+      pendingInteract = null;
+      paintDragging = false;
+      if (activePointers.size === 0) {
+        camDragging = false;
+        canvas.classList.remove("dragging");
+      }
+      return;
+    }
+
+    if (pendingInteract && !camDragging && !longPressConsumed) {
       interactBuilding(pendingInteract);
     }
     pendingInteract = null;
+    longPressConsumed = false;
     camDragging = false;
     paintDragging = false;
     canvas.classList.remove("dragging");
-  });
+  }
+
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
   canvas.addEventListener("pointerleave", () => {
     if (!moveDrag) {
       renderer.hover = null;
@@ -1505,6 +1743,7 @@ async function main() {
     }
     renderer.expandHover = null;
     renderer.radiusFocus = null;
+    if (tipPinned) return;
     if (!tooltip.pointerInside) {
       tooltip.scheduleHide(tooltip.root.classList.contains("interactive") ? 280 : 120);
     }
@@ -1514,10 +1753,13 @@ async function main() {
     "wheel",
     (e) => {
       e.preventDefault();
-      applyZoom(Number(zoomInput.value) - Math.sign(e.deltaY) * 0.1);
+      const p = pointerPos(e);
+      applyZoomAt(Number(zoomInput.value) - Math.sign(e.deltaY) * 0.1, p.x, p.y);
     },
     { passive: false }
   );
+
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   notifyTopologyChanged();
   syncMissionValues();

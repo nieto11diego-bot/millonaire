@@ -1880,14 +1880,14 @@
                         "buildTimeSec":  0,
                         "anm":  "ANM_WONDERS_03B_4X4",
                         "spriteFile":  "resources/r1_0675.png",
-                        "confidence":  "dex-verified",
+                        "confidence":  "custom",
                         "cityBonusScaled":  500,
                         "cityBonusPercentApprox":  5,
                         "influenceRadiusTiles":  6,
                         "instantBuildFactor":  1000,
                         "width":  96,
-                        "height":  148,
-                        "spriteConfidence":  "dex-verified"
+                        "height":  180,
+                        "spriteConfidence":  "custom-photo"
                     },
                     {
                         "objectId":  35,
@@ -1910,8 +1910,8 @@
                         "cityBonusPercentApprox":  10,
                         "influenceRadiusTiles":  6,
                         "instantBuildFactor":  2000,
-                        "width":  200,
-                        "height":  213,
+                        "width":  120,
+                        "height":  144,
                         "spriteConfidence":  "custom-photo"
                     },
                     {
@@ -1922,8 +1922,8 @@
                         "descTid":  -1,
                         "level":  8,
                         "exp":  800,
-                        "gridW":  4,
-                        "gridH":  4,
+                        "gridW":  6,
+                        "gridH":  5,
                         "costCoins":  0,
                         "costFortune":  12,
                         "costDiamonds":  0,
@@ -1935,7 +1935,7 @@
                         "cityBonusPercentApprox":  12,
                         "influenceRadiusTiles":  7,
                         "instantBuildFactor":  3000,
-                        "width":  200,
+                        "width":  190,
                         "height":  187,
                         "spriteConfidence":  "custom-photo"
                     },

@@ -203,7 +203,8 @@ export class BuildingTooltip {
     let left = pos.left;
     let top = pos.top;
     // Keep shop-side tips inside the stage so tall commerce cards stay readable.
-    if (this.root.classList.contains("shop-side")) {
+    const narrow = typeof window !== "undefined" && window.matchMedia("(max-width: 800px)").matches;
+    if (this.root.classList.contains("shop-side") && !narrow) {
       const stage = this.root.parentElement;
       const sh = stage ? stage.clientHeight : window.innerHeight;
       const tipH = this.root.offsetHeight || 220;
@@ -211,6 +212,13 @@ export class BuildingTooltip {
       const pad = 8;
       top = Math.max(half + pad, Math.min(top, sh - half - pad));
       left = Math.max(pad, left);
+    } else if (narrow) {
+      const stage = this.root.parentElement;
+      const sw = stage ? stage.clientWidth : window.innerWidth;
+      const tipW = this.root.offsetWidth || 200;
+      const pad = 8;
+      left = Math.max(pad + tipW / 2, Math.min(left, sw - pad - tipW / 2));
+      top = Math.max(pad + 20, top);
     }
     this.root.style.left = `${Math.round(left)}px`;
     this.root.style.top = `${Math.round(top)}px`;
