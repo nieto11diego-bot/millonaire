@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(__dirname, "..");
 const src = path.resolve(webRoot, "../millionaire-city");
-const dest = path.resolve(webRoot, "public/game");
 const exclude = new Set(["tools", "_tmp_sharp", "_ck", "node_modules"]);
 
 let timer = null;
@@ -20,20 +19,19 @@ function sync() {
   }
   running = true;
   queued = false;
-  const child = spawn(
-    "robocopy",
-    [src, dest, "/E", "/XD", ...exclude, "/NFL", "/NDL", "/NJH", "/NJS", "/NP"],
-    { cwd: webRoot, shell: true, stdio: "inherit" }
-  );
+  const child = spawn(process.execPath, [path.join(__dirname, "sync-game.mjs")], {
+    cwd: webRoot,
+    stdio: "inherit",
+  });
   child.on("exit", (code) => {
     running = false;
-    const ok = code == null || code < 8;
+    const ok = code === 0;
     console.log(`[watch-game] sync ${ok ? "ok" : "failed"} (code ${code})`);
     if (queued) sync();
   });
 }
 
-console.log(`[watch-game] mirroring\n  ${src}\n→ ${dest}`);
+console.log(`[watch-game] mirroring\n  ${src}\n→ ${path.resolve(webRoot, "public/game")}`);
 sync();
 
 const watcher = watch(src, { recursive: true }, (_event, filename) => {

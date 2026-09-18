@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "sync-game": "robocopy ../millionaire-city public/game /E /XD tools _tmp_sharp _ck node_modules & if %ERRORLEVEL% GEQ 8 exit /b 1",
+    "sync-game": "node scripts/sync-game.mjs",
     "watch-game": "node scripts/watch-game.mjs",
     "dev": "npm run sync-game && concurrently -k -n game,next -c cyan,magenta \"npm run watch-game\" \"next dev\"",
     "dev:next": "next dev",
