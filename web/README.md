@@ -41,7 +41,7 @@ npm run dev
 The playable build under `public/game/` is a copy of `../millionaire-city/`. After editing the game, refresh it:
 
 ```powershell
-robocopy ..\millionaire-city public\game /E /XD tools refs
+robocopy ..\millionaire-city public\game /E /XD tools
 ```
 
 ## How saves work
