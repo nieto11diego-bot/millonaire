@@ -1,5 +1,6 @@
 /**
  * Persist game state to localStorage (+ optional cloud via Next/Supabase).
+ * Guest mode uses a separate local key and never touches the cloud.
  * Snapshot is versioned; buildings store objectId + runtime (not full defs).
  */
 
@@ -12,11 +13,15 @@ import {
 } from "./cloudSave.js";
 
 export const SAVE_KEY = "mc_save_v1";
+export const SAVE_KEY_GUEST = "mc_save_guest_v1";
 export const SAVE_VERSION = 1;
 export const NEW_GAME_FLAG = "mc_force_new_v1";
+export const GUEST_FLAG = "mc_guest_mode_v1";
 
 /** When false, writeSave / autosave flush become no-ops (used during new-game reset). */
 let persistEnabled = true;
+/** Guest: local-only, separate slot from the account save. */
+let guestMode = false;
 
 export function setPersistEnabled(enabled) {
   persistEnabled = !!enabled;
@@ -24,6 +29,41 @@ export function setPersistEnabled(enabled) {
 
 export function isPersistEnabled() {
   return persistEnabled;
+}
+
+export function isGuestMode() {
+  return guestMode;
+}
+
+function activeSaveKey() {
+  return guestMode ? SAVE_KEY_GUEST : SAVE_KEY;
+}
+
+/**
+ * Call once at boot (before loadInitialSave).
+ * - ?mode=guest → guest slot, no cloud
+ * - ?new=… → keep current mode (nueva partida reload)
+ * - otherwise → account slot (clears guest flag)
+ */
+export function initPlayModeFromUrl() {
+  try {
+    const url = new URL(location.href);
+    if (url.searchParams.get("mode") === "guest") {
+      guestMode = true;
+      sessionStorage.setItem(GUEST_FLAG, "1");
+      url.searchParams.delete("mode");
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+      return;
+    }
+    if (url.searchParams.has("new")) {
+      guestMode = sessionStorage.getItem(GUEST_FLAG) === "1";
+      return;
+    }
+    guestMode = false;
+    sessionStorage.removeItem(GUEST_FLAG);
+  } catch {
+    guestMode = false;
+  }
 }
 
 /**
@@ -34,8 +74,8 @@ export function writeSave(snapshot) {
   if (!persistEnabled) return false;
   if (!snapshot) return false;
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
-    queueCloudSave(snapshot);
+    localStorage.setItem(activeSaveKey(), JSON.stringify(snapshot));
+    if (!guestMode) queueCloudSave(snapshot);
     return true;
   } catch (err) {
     console.warn("[save] write failed", err);
@@ -48,7 +88,7 @@ export function writeSave(snapshot) {
  */
 export function readSave() {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(activeSaveKey());
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (!data || data.version !== SAVE_VERSION) return null;
@@ -61,10 +101,13 @@ export function readSave() {
 
 /**
  * Pick the newest of local vs cloud. Migrates local → cloud when cloud is empty.
+ * Guest: local guest slot only.
  * @returns {Promise<object|null>}
  */
 export async function loadInitialSave() {
   const local = readSave();
+  if (guestMode) return local;
+
   let cloud = null;
   try {
     cloud = await fetchCloudSave();
@@ -95,16 +138,16 @@ export async function loadInitialSave() {
 
 export function clearSave() {
   try {
-    localStorage.removeItem(SAVE_KEY);
+    localStorage.removeItem(activeSaveKey());
   } catch {
     /* ignore */
   }
 }
 
-/** Wipe local + cloud (cloud no-ops for guests). */
+/** Wipe active local slot; cloud only when not guest. */
 export async function clearAllSaves() {
   clearSave();
-  await clearCloudSave();
+  if (!guestMode) await clearCloudSave();
 }
 
 export { flushCloudSave, clearCloudSave };
@@ -266,7 +309,6 @@ export function applySnapshot(snapshot, ctx) {
   if (p.level != null) state.level = Math.max(1, Number(p.level) || 1);
   if (p.xp != null) state.xp = Math.max(0, Number(p.xp) || 0);
 
-  // Expansions
   const ex = snapshot.expansions || {};
   expansions.owned = new Set(ex.owned || []);
   if (expansions.owned.size === 0) {
@@ -274,7 +316,6 @@ export function applySnapshot(snapshot, ctx) {
   }
   expansions.boughtCount = Math.max(0, Number(ex.boughtCount) || 0);
 
-  // River (deterministic from seed)
   const rv = snapshot.river || {};
   if (rv.seed != null) {
     river.generate({
@@ -284,7 +325,6 @@ export function applySnapshot(snapshot, ctx) {
     });
   }
 
-  // Roads
   roads.cells.fill(false);
   roads.kinds.fill(null);
   for (const tile of snapshot.roads || []) {
@@ -292,7 +332,6 @@ export function applySnapshot(snapshot, ctx) {
     roads.set(tile.tx, tile.ty, true, tile.kind === "zebra" ? "zebra" : "road");
   }
 
-  // Buildings
   grid.clear();
   let restored = 0;
   let maxId = 0;
@@ -314,7 +353,6 @@ export function applySnapshot(snapshot, ctx) {
   }
   if (maxId >= grid._nextId) grid._nextId = maxId + 1;
 
-  // Missions
   const ms = snapshot.missions || {};
   for (const sku of Object.keys(missions.counted)) {
     missions.counted[sku] = 0;
@@ -339,7 +377,6 @@ export function applySnapshot(snapshot, ctx) {
   if (Array.isArray(ms.uniqueWonders)) missions.uniqueWonders = [...ms.uniqueWonders];
   missions._emit?.();
 
-  // Camera
   if (renderer && snapshot.camera) {
     if (snapshot.camera.x != null) renderer.camera.x = Number(snapshot.camera.x) || 0;
     if (snapshot.camera.y != null) renderer.camera.y = Number(snapshot.camera.y) || 0;
@@ -366,7 +403,7 @@ export function createAutosave(buildFn, opts = {}) {
     timer = 0;
     if (!persistEnabled) return false;
     lastOk = writeSave(buildFn());
-    flushCloudSave();
+    if (!guestMode) flushCloudSave();
     return lastOk;
   }
 

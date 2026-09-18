@@ -31,14 +31,20 @@ export default async function HomePage() {
               <Link className="btn btn-primary" href="/play">
                 Continuar partida
               </Link>
+              <Link className="btn btn-ghost" href="/play?mode=guest">
+                Jugar como invitado
+              </Link>
             </div>
-            <p className="hint">Tu progreso se guarda en la nube automáticamente.</p>
+            <p className="hint">
+              Continuar usa tu cuenta (nube). Invitado es una partida aparte, solo
+              en este navegador.
+            </p>
           </>
         ) : (
           <>
             <h2>Jugar</h2>
             <div className="actions">
-              <Link className="btn btn-primary" href="/play">
+              <Link className="btn btn-primary" href="/play?mode=guest">
                 Jugar como invitado
               </Link>
               <Link className="btn btn-ghost" href="/login">
@@ -46,7 +52,8 @@ export default async function HomePage() {
               </Link>
             </div>
             <p className="hint">
-              Como invitado la partida solo se guarda en este navegador.
+              Como invitado la partida solo se guarda en este navegador y no usa
+              la nube.
             </p>
           </>
         )}

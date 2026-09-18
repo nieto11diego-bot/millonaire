@@ -15,7 +15,7 @@ import { EconomySim } from "./sim.js";
 import { createRuntime, formatDuration, isConnectedToHQ, isHQ, needsRoad, TIME_SCALE, wonderGoldRemainingMs, wonderDiamondRemainingMs, wonderGoldReady, wonderDiamondReady, buildDurationMs, buildPlaceXp, buildLevelThresholds, isConstructing, usesLootEconomy, getBuildingFinalProduction, effectiveMaxLoot } from "./economy.js";
 import { cashHtml, goldHtml, diamondHtml, formatCash, replaceCurrencySymbols } from "./ui/money.js";
 import { rewardForLevel, rewardsBetween, sumRewards } from "./levelRewards.js";
-import { clearSave, clearAllSaves, loadInitialSave, buildSnapshot, applySnapshot, createAutosave, setPersistEnabled, NEW_GAME_FLAG, flushCloudSave } from "./save.js";
+import { clearSave, clearAllSaves, loadInitialSave, buildSnapshot, applySnapshot, createAutosave, setPersistEnabled, NEW_GAME_FLAG, flushCloudSave, initPlayModeFromUrl, isGuestMode } from "./save.js";
 
 const TILE = 32;
 const START_CASH = 50_000_000;
@@ -338,6 +338,8 @@ function connectBuildingsWithRoad(roads, expansions, grid, a, b) {
 }
 
 async function main() {
+  initPlayModeFromUrl();
+
   let data;
   try {
     data = await loadGameData();
@@ -1548,19 +1550,21 @@ async function main() {
 
   window.addEventListener("beforeunload", () => {
     autosave?.flush();
-    flushCloudSave();
+    if (!isGuestMode()) flushCloudSave();
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       autosave?.flush();
-      flushCloudSave();
+      if (!isGuestMode()) flushCloudSave();
     }
   });
 
   document.getElementById("btn-new-game")?.addEventListener("click", () => {
     openConfirm({
       title: "Nueva partida",
-      copy: "Se borrará el progreso guardado en este navegador y en la nube (si hay sesión).",
+      copy: isGuestMode()
+        ? "Se borrará el progreso de invitado en este navegador."
+        : "Se borrará el progreso guardado en este navegador y en la nube (si hay sesión).",
       ask: "¿Empezar de cero?",
       detailHtml: "Esta acción no se puede deshacer.",
       okLabel: "Nueva partida",
