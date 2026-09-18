@@ -29,10 +29,9 @@ const BUILD_TRIGGERS = {
   35: [17],
   36: [17],
   152: [17],
-  160: [17],
 };
 
-const WONDER_UNIQUE_IDS = new Set([34, 35, 36, 152, 160]);
+const WONDER_UNIQUE_IDS = new Set([34, 35, 36, 152]);
 const WONDER_UNIQUE_TARGET = 3;
 
 /** Cash / company-value style missions (amount counter flips to 1 when condition met). */

@@ -177,7 +177,6 @@
                  "building.discovery":  207,
                  "building.pyramid":  208,
                  "building.aztec_calendar":  209,
-                 "building.transatlantic":  210,
                  "tutorial.welcome":  211,
                  "tutorial.commerce_radius":  212,
                  "tutorial.contracts_rent":  213,
@@ -1639,13 +1638,6 @@
                                 "de":  "Azteken-Kalender",
                                 "it":  "Calendario Azteco",
                                 "es":  "Calendario Azteca"
-                            },
-                    "210":  {
-                                "en":  "Transatlantic",
-                                "fr":  "Paquebot",
-                                "de":  "Transatlantik",
-                                "it":  "Transatlantico",
-                                "es":  "TransatlÃ¡ntico"
                             },
                     "211":  {
                                 "en":  "Welcome to Millionaire City (TM)!\\nYour goal in the game is to build a city and become rich! Do this by building houses and collecting rent.\\n\\nGet Fortune Points \u0026 Cash Exchange:\\nTo advance faster in the game buy Fortune Points. Each Fortune Point can be converted to Dollars.\\nTo Get Fortune Points tap the button with the gold bars in the top middle of the game screen.\\nTo exchange Fortune Points to cash, tap the button with the dollars in the top middle of the game screen.\\n\\nHouses, Commerce, Decorations and Wonders:\\n\\nShop: Top left button opens the shop. From here you can buy buildings and decorations.\\n\\nHouse: Place a house on a preplaced plot, sign a contract to get tenants and collect the rent.\\n",
