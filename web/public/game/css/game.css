@@ -99,25 +99,6 @@ html, body {
   pointer-events: none;
 }
 
-.site-menu-link {
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  padding: 0.35rem 0.65rem;
-  border-radius: 8px;
-  background: rgba(15, 28, 46, 0.85);
-  border: 1px solid rgba(232, 184, 74, 0.35);
-  color: #f4f0e6;
-  font-family: Fredoka, "Segoe UI", sans-serif;
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.site-menu-link:hover {
-  filter: brightness(1.08);
-}
-
 .city-title {
   text-align: center;
   pointer-events: none;

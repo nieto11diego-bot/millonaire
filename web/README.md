@@ -38,11 +38,21 @@ npm run dev
 
 ## Syncing the game copy
 
-The playable build under `public/game/` is a copy of `../millionaire-city/`. After editing the game, refresh it:
+The playable build under `public/game/` is a copy of `../millionaire-city/`.
+
+`npm run dev` syncs once and then watches for changes (auto-copy). Manual sync:
 
 ```powershell
-robocopy ..\millionaire-city public\game /E /XD tools
+npm run sync-game
 ```
+
+Or keep a watcher running alone:
+
+```powershell
+npm run watch-game
+```
+
+Then hard-refresh the browser (Ctrl+F5). Use the port Next prints (often `3001` if `3000` is busy).
 
 ## How saves work
 

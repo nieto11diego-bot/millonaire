@@ -2160,8 +2160,8 @@
                         "cityBonusPercentApprox":  8,
                         "influenceRadiusTiles":  8,
                         "instantBuildFactor":  2000,
-                        "width":  200,
-                        "height":  319,
+                        "width":  140,
+                        "height":  200,
                         "spriteConfidence":  "custom-photo"
                     },
                     {
@@ -2173,7 +2173,7 @@
                         "level":  14,
                         "exp":  2200,
                         "gridW":  5,
-                        "gridH":  5,
+                        "gridH":  4,
                         "costCoins":  1250000,
                         "costFortune":  0,
                         "costDiamonds":  0,
@@ -2185,8 +2185,8 @@
                         "cityBonusPercentApprox":  11,
                         "influenceRadiusTiles":  10,
                         "instantBuildFactor":  3000,
-                        "width":  220,
-                        "height":  367,
+                        "width":  160,
+                        "height":  256,
                         "spriteConfidence":  "custom-photo"
                     }
                 ],

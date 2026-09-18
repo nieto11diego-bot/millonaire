@@ -1,12 +1,13 @@
 /** Load game data JSON (requires local HTTP server). */
 export async function loadGameData() {
+  const bust = { cache: "no-store" };
   const [economy, buildings, i18n, roads, missions, levels] = await Promise.all([
-    fetch("data/economy.json").then((r) => r.json()),
-    fetch("refs/buildings.json").then((r) => r.json()),
-    fetch("data/i18n.json").then((r) => r.json()),
-    fetch("data/roads.json").then((r) => r.json()),
-    fetch("data/missions.json").then((r) => r.json()),
-    fetch("data/levels.json").then((r) => r.json()).catch(() => null),
+    fetch("data/economy.json", bust).then((r) => r.json()),
+    fetch("refs/buildings.json", bust).then((r) => r.json()),
+    fetch("data/i18n.json", bust).then((r) => r.json()),
+    fetch("data/roads.json", bust).then((r) => r.json()),
+    fetch("data/missions.json", bust).then((r) => r.json()),
+    fetch("data/levels.json", bust).then((r) => r.json()).catch(() => null),
   ]);
   return { economy, buildings, i18n, roads, missions, levels };
 }

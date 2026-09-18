@@ -1,6 +1,6 @@
 /**
  * Pair of combat jets that cross the map like the zeppelin,
- * perform opposite loopings, and leave a faint exhaust trail.
+ * swap lanes along the pass, and leave a faint exhaust trail.
  */
 
 const TRAIL_MAX = 56;
@@ -35,7 +35,7 @@ export class FighterPair {
     /** Base path progress along X (nose of the pair) */
     this.x = 0;
     this.baseY = 0;
-    this.speed = 165;
+    this.speed = 330;
 
     /** Lateral half-separation between the two jets (screen Y) */
     this.sep = 48;
@@ -43,13 +43,15 @@ export class FighterPair {
     this.firstSpawn = true;
     this.sepAnim = 0;
 
-    /**
-     * Flight clock for scripted maneuvers (ms into this pass).
-     * Timeline is rebuilt each spawn.
-     */
-    this.t = 0;
-    /** @type {{ t0: number, t1: number, kind: string, amp?: number, center?: number }[]} */
-    this.maneuvers = [];
+    /** How many lane swaps during the mid stretch of each pass */
+    this.swapCount = 2;
+    /** Map-progress window where swaps happen (0..1) */
+    this.swapT0 = 0.18;
+    this.swapT1 = 0.82;
+
+    /** Spawn X used to measure progress across the map */
+    this._spawnX = 0;
+    this._exitX = 0;
 
     /** @type {[{ trail: TrailPoint[] }, { trail: TrailPoint[] }]} */
     this.jets = [{ trail: [] }, { trail: [] }];
@@ -82,82 +84,52 @@ export class FighterPair {
     return this.grid.rows * this.grid.tile;
   }
 
-  /** Pick a shared random entry point and script maneuvers for this pass. */
+  /** Pick a shared random entry point for this pass. */
   spawn() {
     const margin = this.drawW + 140;
     this.dir = Math.random() < 0.5 ? 1 : -1;
     const padY = 70;
     const maxY = Math.max(padY + 40, this.mapH - this.drawH - 80);
     this.baseY = padY + Math.random() * (maxY - padY);
-    this.x = this.dir > 0 ? -margin : this.mapW + margin;
-    this.speed = (95 + Math.random() * 45) * 1.5;
-    this.t = 0;
+    this._spawnX = this.dir > 0 ? -margin : this.mapW + margin;
+    this._exitX = this.dir > 0 ? this.mapW + margin : -margin;
+    this.x = this._spawnX;
+    this.speed = (95 + Math.random() * 45) * 3;
     this.sep = 95 + Math.random() * 35;
+    this.swapCount = 2;
+    this.swapT0 = 0.16 + Math.random() * 0.06;
+    this.swapT1 = 0.78 + Math.random() * 0.08;
     // First time: same point then peel apart; later: already laterally separated
     this.sepAnim = this.firstSpawn ? 0 : 1;
     this.firstSpawn = false;
     this.jets[0].trail = [];
     this.jets[1].trail = [];
     this._trailAcc = 0;
-    this._buildManeuvers();
     this.active = true;
     this.waitMs = 0;
   }
 
-  /**
-   * Script: three equally spaced loopings across the pass.
-   * Times are in ms of flight along the pass.
-   */
-  _buildManeuvers() {
-    const mapSpan = this.mapW + this.drawW * 2 + 280;
-    const passMs = (mapSpan / this.speed) * 1000;
-    const windowStart = passMs * 0.16;
-    const windowEnd = passMs * 0.84;
-    const loopDur = 1000 + Math.random() * 280;
-    const usable = Math.max(loopDur * 3, windowEnd - windowStart);
-    const step = usable / 3;
-
-    /** @type {{ t0: number, t1: number, kind: string, amp?: number }[]} */
-    const m = [];
-    for (let i = 0; i < 3; i++) {
-      const center = windowStart + step * (i + 0.5);
-      m.push({
-        t0: center - loopDur / 2,
-        t1: center + loopDur / 2,
-        kind: "loop",
-        amp: 88 + Math.random() * 40,
-      });
-    }
-
-    this.maneuvers = m;
+  /** 0..1 progress from spawn X to exit X. */
+  _progress() {
+    const span = this._exitX - this._spawnX;
+    if (!span) return 0;
+    return Math.max(0, Math.min(1, (this.x - this._spawnX) / span));
   }
 
   /**
-   * Evaluate offset + bank angle for one jet at flight time t.
-   * @param {number} jetIndex 0 | 1
-   * @param {number} tMs
+   * Lane blend: +1 = initial lanes, 0 = crossing, -1 = swapped (and so on).
+   * @param {number} progress
    */
-  _maneuverOffset(jetIndex, tMs) {
-    let ox = 0;
-    let oy = 0;
-    let angle = 0;
-    const sign = jetIndex === 0 ? 1 : -1;
-
-    for (const m of this.maneuvers) {
-      if (tMs < m.t0 || tMs > m.t1) continue;
-      const u = (tMs - m.t0) / (m.t1 - m.t0); // 0..1
-      const amp = m.amp ?? 40;
-
-      if (m.kind === "loop") {
-        // Opposite loops: one rolls over the top, the other under
-        const theta = u * Math.PI * 2;
-        ox += this.dir * amp * Math.sin(theta);
-        oy += -sign * amp * (1 - Math.cos(theta));
-        angle += -sign * theta * this.dir;
-      }
-    }
-
-    return { ox, oy, angle };
+  _laneBlend(progress) {
+    const t0 = this.swapT0;
+    const t1 = this.swapT1;
+    const n = this.swapCount;
+    let phase = 0;
+    if (progress <= t0) phase = 0;
+    else if (progress >= t1) phase = n;
+    else phase = ((progress - t0) / (t1 - t0)) * n;
+    // cos(kπ): +1 → -1 → +1 … for each completed swap
+    return Math.cos(phase * Math.PI);
   }
 
   /**
@@ -182,18 +154,29 @@ export class FighterPair {
       return;
     }
 
-    this.t += dtMs;
     this._updateSep(dtMs);
     this.x += this.dir * this.speed * (dtMs / 1000);
 
     const sepNow = this.sep * this._easeOutCubic(this.sepAnim);
+    const progress = this._progress();
+    const lane = this._laneBlend(progress);
+    // Peak stagger / bank in the middle of each swap
+    const t0 = this.swapT0;
+    const t1 = this.swapT1;
+    const n = this.swapCount;
+    let swapWave = 0;
+    if (progress > t0 && progress < t1) {
+      const phase = ((progress - t0) / (t1 - t0)) * n;
+      swapWave = Math.sin(phase * Math.PI);
+    }
+
     for (let i = 0; i < 2; i++) {
       const sign = i === 0 ? 1 : -1;
-      const { ox, oy, angle } = this._maneuverOffset(i, this.t);
-      const y = this.baseY + sign * sepNow + oy;
+      const ox = -sign * swapWave * 26 * this.dir;
+      const bank = -sign * swapWave * 0.32 * this.dir;
       this._pose[i].x = this.x + ox;
-      this._pose[i].y = y;
-      this._pose[i].angle = angle;
+      this._pose[i].y = this.baseY + sign * sepNow * lane;
+      this._pose[i].angle = bank;
     }
 
     this._updateTrails(dtMs);
