@@ -1,2 +1,5 @@
 .vercel
 .env*
+**/_tmp_ffmpeg/
+**/_tmp_sharp/
+**/_tmp_img/

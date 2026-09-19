@@ -6,19 +6,38 @@
         "spritesFixedAt": "2026-09-14T15:06:18.0452900+02:00"
     },
     "rules": {
+        "decorations": {
+            "description": "Decorations grant houseBonusScaled / decorationBonus inside influenceRadiusTiles (edge-to-edge). Applies to houses and commerces. 100 scaled ~= +1%.",
+            "formulas": {
+                "influenceScaled": "sum(decoration.houseBonusScaled in radius) + sum(wonder.rewardBonusScaled global)",
+                "payoutMultiplier": "(influenceScaled + 10000) / 10000"
+            },
+            "confidence": "custom"
+        },
         "wonders": {
-            "description": "cityBonusScaled; 500 ~= 5% city-wide. No gold/diamond production rewards.",
+            "description": "cityBonusScaled / rewardBonusScaled: global city bonus to houses and commerces (accumulates, no radius). 500 ~= +5%. Each wonder also produces goldReward / diamondReward every goldIntervalSec / diamondIntervalSec (7 days).",
+            "formulas": {
+                "goldIntervalMs": "goldIntervalSec * 1000",
+                "diamondIntervalMs": "diamondIntervalSec * 1000",
+                "collect": "grant goldReward and/or diamondReward when timers ready",
+                "cityBonus": "added into influenceScaled for every house and commerce"
+            },
             "confidence": "custom"
         },
         "commerce": {
-            "description": "Commerces earn cash on a fixed rewardSec cycle. Payout scales with construction cost (same timer/collect loop as houses).",
+            "description": "Commerces earn rentPerTenant × customers (people in finished houses inside influenceRadiusTiles) every COMMERCE_CYCLE_SEC (3 min), then decoration/wonder influence.",
+            "formulas": {
+                "customers": "sum(house.runtime.people) for finished houses in radius",
+                "cycleBase": "rentPerTenant * customers",
+                "cyclePayout": "round(cycleBase * (influenceScaled + 10000) / 10000)"
+            },
             "confidence": "custom"
         },
         "rent": {
-            "description": "Houses earn rent via signed contracts. Sign (pay costBase) → wait → collect incomeBase boosted by house contractBonusPercent.",
+            "description": "Houses earn rent via signed contracts. Sign (pay costBase) → wait → collect incomeBase boosted by house contractBonusPercent and decoration/wonder influence.",
             "formulas": {
                 "contractCost": "contract.costBase",
-                "contractIncome": "round(contract.incomeBase * (1 + house.contractBonusPercent / 100))",
+                "contractIncome": "round(contract.incomeBase * (1 + house.contractBonusPercent / 100) * (influenceScaled + 10000) / 10000)",
                 "durationMs": "contract.durationSec * 1000"
             },
             "confidence": "custom"
@@ -217,8 +236,7 @@
             "xpReward": 25,
             "buildCost": 30000,
             "costDiamonds": 0,
-            "maxPeople": 2,
-            "contractBonusPercent": 0.5
+            "maxPeople": 4
         },
         {
             "objectId": 2,
@@ -245,8 +263,7 @@
             "xpReward": 50,
             "buildCost": 100000,
             "costDiamonds": 0,
-            "maxPeople": 4,
-            "contractBonusPercent": 0.8
+            "maxPeople": 7
         },
         {
             "objectId": 3,
@@ -273,8 +290,7 @@
             "xpReward": 100,
             "buildCost": 180000,
             "costDiamonds": 0,
-            "maxPeople": 6,
-            "contractBonusPercent": 1.2
+            "maxPeople": 6
         },
         {
             "objectId": 4,
@@ -300,8 +316,7 @@
             "xpReward": 175,
             "buildCost": 200000,
             "costDiamonds": 0,
-            "maxPeople": 3,
-            "contractBonusPercent": 1.5
+            "maxPeople": 10
         },
         {
             "objectId": 5,
@@ -327,8 +342,7 @@
             "xpReward": 275,
             "buildCost": 250000,
             "costDiamonds": 0,
-            "maxPeople": 5,
-            "contractBonusPercent": 1.8
+            "maxPeople": 9
         },
         {
             "objectId": 155,
@@ -354,8 +368,7 @@
             "xpReward": 400,
             "buildCost": 300000,
             "costDiamonds": 0,
-            "maxPeople": 2,
-            "contractBonusPercent": 2.2
+            "maxPeople": 7
         },
         {
             "objectId": 6,
@@ -381,8 +394,7 @@
             "xpReward": 550,
             "buildCost": 400000,
             "costDiamonds": 0,
-            "maxPeople": 6,
-            "contractBonusPercent": 2.5
+            "maxPeople": 5
         },
         {
             "objectId": 7,
@@ -408,8 +420,7 @@
             "xpReward": 750,
             "buildCost": 500000,
             "costDiamonds": 0,
-            "maxPeople": 8,
-            "contractBonusPercent": 2.8
+            "maxPeople": 6
         },
         {
             "objectId": 10,
@@ -421,7 +432,7 @@
             "exp": 1400,
             "gridW": 4,
             "gridH": 3,
-            "costCoins": 650000,
+            "costCoins": 2000000,
             "costFortune": 0,
             "buildTimeSec": 7200,
             "anm": "ANM_HOUSE_03_3X4",
@@ -433,10 +444,10 @@
             "height": 126,
             "spriteConfidence": "custom-photo",
             "xpReward": 1000,
-            "buildCost": 650000,
+            "buildCost": 2000000,
             "costDiamonds": 0,
-            "maxPeople": 7,
-            "contractBonusPercent": 3.2
+            "maxPeople": 6,
+            "contractBonusPercent": 30
         },
         {
             "objectId": 12,
@@ -448,7 +459,7 @@
             "exp": 2000,
             "gridW": 4,
             "gridH": 3,
-            "costCoins": 800000,
+            "costCoins": 2500000,
             "costFortune": 0,
             "buildTimeSec": 10800,
             "anm": "ANM_HOUSE_12_3X4",
@@ -460,10 +471,10 @@
             "height": 124,
             "spriteConfidence": "dex-verified",
             "xpReward": 1400,
-            "buildCost": 800000,
+            "buildCost": 2500000,
             "costDiamonds": 0,
-            "maxPeople": 9,
-            "contractBonusPercent": 3.5
+            "maxPeople": 8,
+            "contractBonusPercent": -50
         },
         {
             "objectId": 8,
@@ -475,7 +486,7 @@
             "exp": 2500,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 900000,
+            "costCoins": 600000,
             "costFortune": 0,
             "buildTimeSec": 16200,
             "anm": "ANM_HOUSE_04_3X3",
@@ -487,10 +498,10 @@
             "height": 128,
             "spriteConfidence": "dex-verified",
             "xpReward": 1900,
-            "buildCost": 900000,
+            "buildCost": 600000,
             "costDiamonds": 0,
-            "maxPeople": 24,
-            "contractBonusPercent": 3.8
+            "maxPeople": 22,
+            "contractBonusPercent": -20
         },
         {
             "objectId": 9,
@@ -502,7 +513,7 @@
             "exp": 4000,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 1200000,
+            "costCoins": 1000000,
             "costFortune": 0,
             "buildTimeSec": 21600,
             "anm": "ANM_HOUSE_11_3X3",
@@ -514,10 +525,10 @@
             "height": 128,
             "spriteConfidence": "dex-verified",
             "xpReward": 2600,
-            "buildCost": 1200000,
+            "buildCost": 1000000,
             "costDiamonds": 0,
-            "maxPeople": 30,
-            "contractBonusPercent": 4.2
+            "maxPeople": 28,
+            "contractBonusPercent": -30
         },
         {
             "objectId": 11,
@@ -529,7 +540,7 @@
             "exp": 6000,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 1500000,
+            "costCoins": 3000000,
             "costFortune": 0,
             "buildTimeSec": 28800,
             "anm": "ANM_HOUSE_18_3X3",
@@ -541,10 +552,10 @@
             "height": 144,
             "spriteConfidence": "dex-verified",
             "xpReward": 3500,
-            "buildCost": 1500000,
+            "buildCost": 3000000,
             "costDiamonds": 0,
-            "maxPeople": 30,
-            "contractBonusPercent": 4.8
+            "maxPeople": 25,
+            "contractBonusPercent": -30
         },
         {
             "objectId": 14,
@@ -556,7 +567,7 @@
             "exp": 7500,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 1800000,
+            "costCoins": 7000000,
             "costFortune": 0,
             "buildTimeSec": 36000,
             "anm": "ANM_HOUSE_21_3X4",
@@ -568,10 +579,10 @@
             "height": 128,
             "spriteConfidence": "dex-verified",
             "xpReward": 4800,
-            "buildCost": 1800000,
+            "buildCost": 7000000,
             "costDiamonds": 0,
-            "maxPeople": 34,
-            "contractBonusPercent": 5.2
+            "maxPeople": 30,
+            "contractBonusPercent": -30
         },
         {
             "objectId": 13,
@@ -583,7 +594,7 @@
             "exp": 9000,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 3500000,
+            "costCoins": 5000000,
             "costFortune": 0,
             "buildTimeSec": 43200,
             "anm": "ANM_HOUSE_20_3X3",
@@ -595,10 +606,10 @@
             "height": 145,
             "spriteConfidence": "custom-photo",
             "xpReward": 6500,
-            "buildCost": 3500000,
+            "buildCost": 5000000,
             "costDiamonds": 0,
-            "maxPeople": 42,
-            "contractBonusPercent": 5.8
+            "maxPeople": 35,
+            "contractBonusPercent": -35
         },
         {
             "objectId": 229,
@@ -610,7 +621,7 @@
             "exp": 10000,
             "gridW": 5,
             "gridH": 2,
-            "costCoins": 3000000,
+            "costCoins": 30000000,
             "costFortune": 0,
             "buildTimeSec": 86400,
             "anm": "ANM_HOUSE_CURVED_RESIDENCES_5X2",
@@ -622,10 +633,10 @@
             "height": 143,
             "spriteConfidence": "custom-photo",
             "xpReward": 8500,
-            "buildCost": 3000000,
+            "buildCost": 30000000,
             "costDiamonds": 0,
-            "maxPeople": 38,
-            "contractBonusPercent": 5.5
+            "maxPeople": 52,
+            "contractBonusPercent": -35
         },
         {
             "objectId": 16,
@@ -637,7 +648,7 @@
             "exp": 10500,
             "gridW": 4,
             "gridH": 4,
-            "costCoins": 4200000,
+            "costCoins": 15000000,
             "costFortune": 0,
             "buildTimeSec": 86400,
             "anm": "ANM_HOUSE_19_4X4",
@@ -649,10 +660,10 @@
             "height": 230,
             "spriteConfidence": "dex-verified",
             "xpReward": 11000,
-            "buildCost": 4200000,
+            "buildCost": 15000000,
             "costDiamonds": 0,
-            "maxPeople": 48,
-            "contractBonusPercent": 6
+            "maxPeople": 52,
+            "contractBonusPercent": -40
         },
         {
             "objectId": 15,
@@ -664,7 +675,7 @@
             "exp": 12000,
             "gridW": 6,
             "gridH": 4,
-            "costCoins": 5500000,
+            "costCoins": 12000000,
             "costFortune": 0,
             "buildTimeSec": 108000,
             "anm": "ANM_HOUSE_30_4X6",
@@ -676,10 +687,10 @@
             "height": 180,
             "spriteConfidence": "custom-photo",
             "xpReward": 14500,
-            "buildCost": 5500000,
+            "buildCost": 12000000,
             "costDiamonds": 0,
-            "maxPeople": 8,
-            "contractBonusPercent": 6.5
+            "maxPeople": 6,
+            "contractBonusPercent": 60
         },
         {
             "objectId": 206,
@@ -691,7 +702,7 @@
             "exp": 16000,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 7000000,
+            "costCoins": 20000000,
             "costFortune": 0,
             "buildTimeSec": 129600,
             "anm": "ANM_HOUSE_WORLD_FINANCIAL_3X3",
@@ -703,10 +714,10 @@
             "height": 357,
             "spriteConfidence": "custom-photo",
             "xpReward": 19000,
-            "buildCost": 7000000,
+            "buildCost": 20000000,
             "costDiamonds": 0,
-            "maxPeople": 54,
-            "contractBonusPercent": 7
+            "maxPeople": 58,
+            "contractBonusPercent": -40
         },
         {
             "objectId": 230,
@@ -718,7 +729,7 @@
             "exp": 18000,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 9000000,
+            "costCoins": 28000000,
             "costFortune": 0,
             "buildTimeSec": 151200,
             "anm": "ANM_HOUSE_YELLOW_GLASS_3X3",
@@ -730,10 +741,10 @@
             "height": 357,
             "spriteConfidence": "custom-photo",
             "xpReward": 25000,
-            "buildCost": 9000000,
+            "buildCost": 28000000,
             "costDiamonds": 0,
-            "maxPeople": 60,
-            "contractBonusPercent": 8
+            "maxPeople": 65,
+            "contractBonusPercent": -45
         },
         {
             "objectId": 207,
@@ -759,8 +770,8 @@
             "spriteConfidence": "custom-photo",
             "xpReward": 42000,
             "buildCost": 20000000,
-            "maxPeople": 110,
-            "contractBonusPercent": 10
+            "maxPeople": 120,
+            "contractBonusPercent": -65
         },
         {
             "objectId": 201,
@@ -787,7 +798,7 @@
             "xpReward": 32000,
             "buildCost": 15000000,
             "maxPeople": 80,
-            "contractBonusPercent": 9
+            "contractBonusPercent": -55
         }
     ],
     "commerces": [
@@ -801,11 +812,10 @@
             "exp": 80,
             "gridW": 4,
             "gridH": 3,
-            "costCoins": 10000,
+            "costCoins": 2500000,
             "costFortune": 0,
             "buildTimeSec": 20,
-            "rewardSec": 60,
-            "rewardCash": 40,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_FIRE_STATION_4X3",
             "spriteFile": "bomberos.png",
             "confidence": "custom",
@@ -814,10 +824,8 @@
             "width": 187,
             "height": 200,
             "spriteConfidence": "custom-photo",
-            "baseLoot": 40,
-            "lootInterval": 60,
-            "maxLoot": 400,
-            "influenceRadiusTiles": 4
+            "influenceRadiusTiles": 12,
+            "rentPerTenant": 95
         },
         {
             "objectId": 17,
@@ -826,14 +834,13 @@
             "name": "Pizzeria",
             "descTid": -1,
             "level": 1,
-            "exp": 120,
+            "exp": 200,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 50000,
+            "costCoins": 60000,
             "costFortune": 0,
             "buildTimeSec": 30,
-            "rewardSec": 60,
-            "rewardCash": 180,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_PIZZA_3X3",
             "spriteFile": "resources/r1_0649.png",
             "confidence": "dex-verified",
@@ -842,10 +849,8 @@
             "width": 102,
             "height": 120,
             "spriteConfidence": "dex-verified",
-            "baseLoot": 180,
-            "lootInterval": 60,
-            "maxLoot": 1800,
-            "influenceRadiusTiles": 5
+            "influenceRadiusTiles": 7,
+            "rentPerTenant": 25
         },
         {
             "objectId": 18,
@@ -854,13 +859,13 @@
             "name": "Coffee Shop",
             "descTid": -1,
             "level": 1,
-            "exp": 200,
+            "exp": 335,
             "gridW": 3,
             "gridH": 3,
             "costCoins": 100000,
             "costFortune": 0,
             "buildTimeSec": 90,
-            "rewardSec": 60,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_COFFEE_3X3",
             "spriteFile": "resources/r1_0682.png",
             "confidence": "dex-verified",
@@ -869,10 +874,31 @@
             "width": 105,
             "height": 118,
             "spriteConfidence": "dex-verified",
-            "baseLoot": 360,
-            "lootInterval": 60,
-            "maxLoot": 3600,
-            "influenceRadiusTiles": 4
+            "influenceRadiusTiles": 7,
+            "rentPerTenant": 35
+        },
+        {
+            "objectId": 235,
+            "constant": "COMMERCE_CIBERCAFE",
+            "nameTid": -1,
+            "name": "Cibercafe",
+            "descTid": -1,
+            "level": 8,
+            "exp": 2500,
+            "gridW": 3,
+            "gridH": 3,
+            "costCoins": 750000,
+            "costFortune": 0,
+            "buildTimeSec": 120,
+            "rewardSec": 180,
+            "anm": "ANM_COMMERCE_CIBERCAFE_3X3",
+            "spriteFile": "cibercafe.png",
+            "confidence": "custom",
+            "influenceRadiusTiles": 8,
+            "rentPerTenant": 75,
+            "width": 96,
+            "height": 96,
+            "spriteConfidence": "custom-photo"
         },
         {
             "objectId": 154,
@@ -884,7 +910,7 @@
             "exp": 300,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 150000,
+            "costCoins": 350000,
             "costFortune": 0,
             "buildTimeSec": 450,
             "rewardSec": 180,
@@ -896,11 +922,8 @@
             "width": 107,
             "height": 128,
             "spriteConfidence": "descriptor-resolved",
-            "rewardFactor": 0.5,
-            "baseLoot": 1620,
-            "lootInterval": 180,
-            "maxLoot": 16200,
-            "influenceRadiusTiles": 5
+            "influenceRadiusTiles": 8,
+            "rentPerTenant": 55
         },
         {
             "objectId": 19,
@@ -909,13 +932,13 @@
             "name": "Flower Shop",
             "descTid": -1,
             "level": 7,
-            "exp": 500,
+            "exp": 835,
             "gridW": 3,
             "gridH": 3,
             "costCoins": 250000,
             "costFortune": 0,
             "buildTimeSec": 300,
-            "rewardSec": 300,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_FLOWERSHOP_3X3",
             "spriteFile": "resources/r1_0664.png",
             "confidence": "dex-verified",
@@ -924,10 +947,8 @@
             "width": 105,
             "height": 113,
             "spriteConfidence": "dex-verified",
-            "baseLoot": 4500,
-            "lootInterval": 300,
-            "maxLoot": 45000,
-            "influenceRadiusTiles": 5
+            "influenceRadiusTiles": 9,
+            "rentPerTenant": 45
         },
         {
             "objectId": 159,
@@ -939,10 +960,10 @@
             "exp": 2000,
             "gridW": 3,
             "gridH": 3,
-            "costCoins": 1000000,
+            "costCoins": 550000,
             "costFortune": 0,
             "buildTimeSec": 1800,
-            "rewardSec": 900,
+            "rewardSec": 180,
             "anm": "ANM_R1_0486",
             "spriteFile": "resources/r5_0073.png",
             "confidence": "dex-verified",
@@ -951,11 +972,8 @@
             "width": 104,
             "height": 136,
             "spriteConfidence": "descriptor-resolved",
-            "rewardFactor": 0.5,
-            "baseLoot": 54000,
-            "lootInterval": 900,
-            "maxLoot": 540000,
-            "influenceRadiusTiles": 7
+            "influenceRadiusTiles": 7,
+            "rentPerTenant": 65
         },
         {
             "objectId": 20,
@@ -964,13 +982,13 @@
             "name": "Bowling",
             "descTid": -1,
             "level": 16,
-            "exp": 4000,
+            "exp": 6665,
             "gridW": 4,
             "gridH": 3,
             "costCoins": 2000000,
             "costFortune": 0,
             "buildTimeSec": 3600,
-            "rewardSec": 1800,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_BOWLING_3X4",
             "spriteFile": "resources/r1_0663.png",
             "confidence": "dex-verified",
@@ -979,11 +997,8 @@
             "width": 132,
             "height": 121,
             "spriteConfidence": "dex-verified",
-            "rewardFactor": 0.5,
-            "baseLoot": 216000,
-            "lootInterval": 1800,
-            "maxLoot": 2160000,
-            "influenceRadiusTiles": 7
+            "influenceRadiusTiles": 10,
+            "rentPerTenant": 90
         },
         {
             "objectId": 21,
@@ -992,13 +1007,13 @@
             "name": "Jewelery",
             "descTid": -1,
             "level": 18,
-            "exp": 6000,
+            "exp": 10000,
             "gridW": 4,
             "gridH": 3,
             "costCoins": 3000000,
             "costFortune": 0,
             "buildTimeSec": 7200,
-            "rewardSec": 3600,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_JEWLLERY_3X4",
             "spriteFile": "resources/r1_0667.png",
             "confidence": "dex-verified",
@@ -1007,11 +1022,8 @@
             "width": 134,
             "height": 122,
             "spriteConfidence": "dex-verified",
-            "rewardFactor": 0.5,
-            "baseLoot": 648000,
-            "lootInterval": 3600,
-            "maxLoot": 6480000,
-            "influenceRadiusTiles": 8
+            "influenceRadiusTiles": 9,
+            "rentPerTenant": 105
         },
         {
             "objectId": 22,
@@ -1020,13 +1032,13 @@
             "name": "Night Club",
             "descTid": -1,
             "level": 20,
-            "exp": 8000,
+            "exp": 13335,
             "gridW": 4,
             "gridH": 3,
             "costCoins": 4000000,
             "costFortune": 0,
             "buildTimeSec": 16200,
-            "rewardSec": 7200,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_NIGHTCLUB_3X4",
             "spriteFile": "resources/r1_0673.png",
             "confidence": "dex-verified",
@@ -1035,11 +1047,8 @@
             "width": 136,
             "height": 111,
             "spriteConfidence": "dex-verified",
-            "rewardFactor": 0.5,
-            "baseLoot": 1728000,
-            "lootInterval": 7200,
-            "maxLoot": 17280000,
-            "influenceRadiusTiles": 8
+            "influenceRadiusTiles": 11,
+            "rentPerTenant": 115
         },
         {
             "objectId": 23,
@@ -1048,13 +1057,13 @@
             "name": "Mall",
             "descTid": -1,
             "level": 24,
-            "exp": 10000,
+            "exp": 16665,
             "gridW": 6,
             "gridH": 3,
             "costCoins": 5000000,
             "costFortune": 0,
             "buildTimeSec": 21600,
-            "rewardSec": 14400,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_SHOPPINGMALL_3X6",
             "spriteFile": "resources/r1_0669.png",
             "confidence": "dex-verified",
@@ -1063,11 +1072,8 @@
             "width": 192,
             "height": 122,
             "spriteConfidence": "dex-verified",
-            "rewardFactor": 0.5,
-            "baseLoot": 4320000,
-            "lootInterval": 14400,
-            "maxLoot": 43200000,
-            "influenceRadiusTiles": 9
+            "influenceRadiusTiles": 8,
+            "rentPerTenant": 127
         },
         {
             "objectId": 24,
@@ -1076,13 +1082,13 @@
             "name": "Bank",
             "descTid": -1,
             "level": 26,
-            "exp": 12000,
+            "exp": 20000,
             "gridW": 3,
             "gridH": 3,
             "costCoins": 6000000,
             "costFortune": 0,
             "buildTimeSec": 28800,
-            "rewardSec": 21600,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_BANK_3X3",
             "spriteFile": "resources/r1_0651.png",
             "confidence": "dex-verified",
@@ -1091,11 +1097,8 @@
             "width": 96,
             "height": 119,
             "spriteConfidence": "dex-verified",
-            "rewardFactor": 0.5,
-            "baseLoot": 7776000,
-            "lootInterval": 21600,
-            "maxLoot": 77760000,
-            "influenceRadiusTiles": 9
+            "influenceRadiusTiles": 11,
+            "rentPerTenant": 150
         },
         {
             "objectId": 224,
@@ -1110,7 +1113,7 @@
             "costCoins": 10000000,
             "costFortune": 0,
             "buildTimeSec": 36000,
-            "rewardSec": 600,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_CAMP_NOU_4X4",
             "spriteFile": "camp_nou.png",
             "confidence": "custom",
@@ -1119,11 +1122,8 @@
             "width": 256,
             "height": 219,
             "spriteConfidence": "custom-photo",
-            "rewardFactor": 0.5,
-            "baseLoot": 360000,
-            "lootInterval": 600,
-            "maxLoot": 3600000,
-            "influenceRadiusTiles": 6
+            "influenceRadiusTiles": 12,
+            "rentPerTenant": 220
         },
         {
             "objectId": 225,
@@ -1138,7 +1138,7 @@
             "costCoins": 10000000,
             "costFortune": 0,
             "buildTimeSec": 36000,
-            "rewardSec": 600,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_SANTIAGO_BERNABEU_4X4",
             "spriteFile": "santiago_bernabeu.png",
             "confidence": "custom",
@@ -1147,11 +1147,8 @@
             "width": 256,
             "height": 219,
             "spriteConfidence": "custom-photo",
-            "rewardFactor": 0.5,
-            "baseLoot": 360000,
-            "lootInterval": 600,
-            "maxLoot": 3600000,
-            "influenceRadiusTiles": 6
+            "influenceRadiusTiles": 12,
+            "rentPerTenant": 220
         },
         {
             "objectId": 25,
@@ -1160,13 +1157,13 @@
             "name": "Hospital",
             "descTid": -1,
             "level": 28,
-            "exp": 20000,
+            "exp": 33335,
             "gridW": 5,
             "gridH": 3,
-            "costCoins": 0,
-            "costFortune": 200,
+            "costCoins": 15000000,
+            "costFortune": 0,
             "buildTimeSec": 36000,
-            "rewardSec": 43200,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_HOSPITAL_3X5",
             "spriteFile": "resources/r1_0644.png",
             "confidence": "dex-verified",
@@ -1175,11 +1172,8 @@
             "width": 168,
             "height": 103,
             "spriteConfidence": "dex-verified",
-            "rewardFactor": 0.5,
-            "baseLoot": 25920000,
-            "lootInterval": 43200,
-            "maxLoot": 259200000,
-            "influenceRadiusTiles": 10
+            "influenceRadiusTiles": 14,
+            "rentPerTenant": 350
         },
         {
             "objectId": 26,
@@ -1188,13 +1182,13 @@
             "name": "Casino",
             "descTid": -1,
             "level": 32,
-            "exp": 30000,
-            "gridW": 5,
+            "exp": 50000,
+            "gridW": 6,
             "gridH": 3,
-            "costCoins": 0,
+            "costCoins": 20000000,
             "costFortune": 0,
             "buildTimeSec": 43200,
-            "rewardSec": 86400,
+            "rewardSec": 180,
             "anm": "ANM_COMMERCE_CASINO_3X5",
             "spriteFile": "resources/r1_0657.png",
             "confidence": "dex-verified",
@@ -1203,12 +1197,8 @@
             "width": 171,
             "height": 116,
             "spriteConfidence": "dex-verified",
-            "costDiamonds": 30,
-            "rewardFactor": 0.5,
-            "baseLoot": 77760000,
-            "lootInterval": 86400,
-            "maxLoot": 777600000,
-            "influenceRadiusTiles": 10
+            "influenceRadiusTiles": 9,
+            "rentPerTenant": 480
         }
     ],
     "decorations": [
@@ -1222,7 +1212,7 @@
             "exp": 12,
             "gridW": 1,
             "gridH": 1,
-            "costCoins": 500,
+            "costCoins": 3000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_TREE_01",
@@ -1230,8 +1220,8 @@
             "confidence": "dex-verified",
             "houseBonusScaled": 100,
             "houseBonusPercentApprox": 1,
-            "influenceRadiusTiles": 2,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "influenceRadiusTiles": 1,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 44,
             "height": 75,
             "spriteConfidence": "dex-verified",
@@ -1247,20 +1237,20 @@
             "exp": 18,
             "gridW": 1,
             "gridH": 1,
-            "costCoins": 3000,
+            "costCoins": 4500,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_TREE_02",
             "spriteFile": "resources/r1_0647.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 200,
-            "houseBonusPercentApprox": 2,
+            "houseBonusScaled": 100,
+            "houseBonusPercentApprox": 1,
             "influenceRadiusTiles": 2,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 55,
             "height": 58,
             "spriteConfidence": "dex-verified",
-            "decorationBonus": 0.02
+            "decorationBonus": 0.01
         },
         {
             "objectId": 29,
@@ -1272,20 +1262,20 @@
             "exp": 30,
             "gridW": 1,
             "gridH": 1,
-            "costCoins": 6500,
+            "costCoins": 6000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_TREE_03",
             "spriteFile": "resources/r1_0638.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 200,
-            "houseBonusPercentApprox": 2,
-            "influenceRadiusTiles": 3,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 150,
+            "houseBonusPercentApprox": 1.5,
+            "influenceRadiusTiles": 1,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 45,
             "height": 71,
             "spriteConfidence": "dex-verified",
-            "decorationBonus": 0.02
+            "decorationBonus": 0.015
         },
         {
             "objectId": 30,
@@ -1297,20 +1287,20 @@
             "exp": 480,
             "gridW": 2,
             "gridH": 2,
-            "costCoins": 80000,
+            "costCoins": 13000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_FOUNTAIN_01",
             "spriteFile": "resources/r1_0654.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 700,
-            "houseBonusPercentApprox": 7,
-            "influenceRadiusTiles": 5,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 300,
+            "houseBonusPercentApprox": 3,
+            "influenceRadiusTiles": 6,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 64,
             "height": 64,
             "spriteConfidence": "dex-verified",
-            "decorationBonus": 0.07
+            "decorationBonus": 0.03
         },
         {
             "objectId": 31,
@@ -1322,20 +1312,20 @@
             "exp": 15,
             "gridW": 1,
             "gridH": 1,
-            "costCoins": 1500,
+            "costCoins": 7500,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_TREE_04",
             "spriteFile": "resources/r1_0642.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 200,
-            "houseBonusPercentApprox": 2,
+            "houseBonusScaled": 150,
+            "houseBonusPercentApprox": 1.5,
             "influenceRadiusTiles": 2,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 52,
             "height": 58,
             "spriteConfidence": "dex-verified",
-            "decorationBonus": 0.02
+            "decorationBonus": 0.015
         },
         {
             "objectId": 32,
@@ -1347,20 +1337,20 @@
             "exp": 48,
             "gridW": 2,
             "gridH": 1,
-            "costCoins": 10000,
+            "costCoins": 15000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_TREE_05",
             "spriteFile": "resources/r1_0640.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 200,
-            "houseBonusPercentApprox": 2,
-            "influenceRadiusTiles": 4,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 400,
+            "houseBonusPercentApprox": 4,
+            "influenceRadiusTiles": 3,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 75,
             "height": 52,
             "spriteConfidence": "dex-verified",
-            "decorationBonus": 0.02
+            "decorationBonus": 0.04
         },
         {
             "objectId": 33,
@@ -1372,20 +1362,20 @@
             "exp": 8000,
             "gridW": 3,
             "gridH": 5,
-            "costCoins": 2000000,
+            "costCoins": 50000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_FOUNTAIN_02",
             "spriteFile": "resources/r1_0658.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 1700,
-            "houseBonusPercentApprox": 17,
-            "influenceRadiusTiles": 20,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 700,
+            "houseBonusPercentApprox": 7,
+            "influenceRadiusTiles": 7,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 104,
             "height": 167,
             "spriteConfidence": "dex-verified",
-            "decorationBonus": 0.17
+            "decorationBonus": 0.07
         },
         {
             "objectId": 151,
@@ -1397,20 +1387,20 @@
             "exp": 8000,
             "gridW": 5,
             "gridH": 3,
-            "costCoins": 2000000,
+            "costCoins": 400000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_R1_0456",
             "spriteFile": "resources/r5_0043.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 3000,
-            "houseBonusPercentApprox": 30,
-            "influenceRadiusTiles": 8,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 1000,
+            "houseBonusPercentApprox": 10,
+            "influenceRadiusTiles": 10,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 172,
             "height": 128,
             "spriteConfidence": "descriptor-resolved",
-            "decorationBonus": 0.3
+            "decorationBonus": 0.1
         },
         {
             "objectId": 153,
@@ -1422,20 +1412,20 @@
             "exp": 360,
             "gridW": 2,
             "gridH": 1,
-            "costCoins": 90000,
+            "costCoins": 15000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_R1_0465",
             "spriteFile": "resources/r5_0050.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 800,
-            "houseBonusPercentApprox": 8,
-            "influenceRadiusTiles": 8,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 400,
+            "houseBonusPercentApprox": 4,
+            "influenceRadiusTiles": 3,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 65,
             "height": 54,
             "spriteConfidence": "descriptor-resolved",
-            "decorationBonus": 0.08
+            "decorationBonus": 0.04
         },
         {
             "objectId": 158,
@@ -1447,20 +1437,20 @@
             "exp": 120,
             "gridW": 1,
             "gridH": 1,
-            "costCoins": 30000,
+            "costCoins": 5000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_R1_0482",
             "spriteFile": "resources/r5_0071.png",
             "confidence": "dex-verified",
-            "houseBonusScaled": 700,
-            "houseBonusPercentApprox": 7,
-            "influenceRadiusTiles": 2,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 100,
+            "houseBonusPercentApprox": 1,
+            "influenceRadiusTiles": 3,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 33,
             "height": 39,
             "spriteConfidence": "descriptor-resolved",
-            "decorationBonus": 0.07
+            "decorationBonus": 0.01
         },
         {
             "objectId": 208,
@@ -1472,20 +1462,20 @@
             "exp": 380,
             "gridW": 2,
             "gridH": 2,
-            "costCoins": 120000,
+            "costCoins": 22000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_PARK_FOUNTAIN_2X2",
             "spriteFile": "park_fountain.png",
             "confidence": "custom",
-            "houseBonusScaled": 1000,
-            "houseBonusPercentApprox": 10,
-            "influenceRadiusTiles": 9,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 500,
+            "houseBonusPercentApprox": 5,
+            "influenceRadiusTiles": 7,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 64,
             "height": 64,
             "spriteConfidence": "custom-photo",
-            "decorationBonus": 0.1
+            "decorationBonus": 0.05
         },
         {
             "objectId": 209,
@@ -1495,23 +1485,23 @@
             "descTid": -1,
             "level": 20,
             "exp": 34000,
-            "gridW": 7,
-            "gridH": 2,
+            "gridW": 11,
+            "gridH": 3,
             "costCoins": 0,
             "costFortune": 0,
-            "costDiamonds": 17,
+            "costDiamonds": 10,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_CRUISE_SHIP_7X2",
             "spriteFile": "cruise_ship.png",
             "confidence": "custom",
-            "houseBonusScaled": 6000,
-            "houseBonusPercentApprox": 60,
+            "houseBonusScaled": 2000,
+            "houseBonusPercentApprox": 20,
             "influenceRadiusTiles": 14,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
-            "width": 224,
-            "height": 64,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
+            "width": 360,
+            "height": 128,
             "spriteConfidence": "custom-photo",
-            "decorationBonus": 0.6
+            "decorationBonus": 0.2
         },
         {
             "objectId": 210,
@@ -1532,7 +1522,7 @@
             "houseBonusScaled": 200,
             "houseBonusPercentApprox": 2,
             "influenceRadiusTiles": 2,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 30,
             "height": 70,
             "spriteConfidence": "custom-photo",
@@ -1556,8 +1546,8 @@
             "confidence": "custom",
             "houseBonusScaled": 200,
             "houseBonusPercentApprox": 2,
-            "influenceRadiusTiles": 3,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "influenceRadiusTiles": 2,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 40,
             "height": 78,
             "spriteConfidence": "custom-photo",
@@ -1573,20 +1563,20 @@
             "exp": 140,
             "gridW": 1,
             "gridH": 1,
-            "costCoins": 45000,
+            "costCoins": 9000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_BALLOON_BOY_1X1",
             "spriteFile": "balloon_boy.png",
             "confidence": "custom",
-            "houseBonusScaled": 800,
-            "houseBonusPercentApprox": 8,
-            "influenceRadiusTiles": 6,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 250,
+            "houseBonusPercentApprox": 2.5,
+            "influenceRadiusTiles": 3,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 44,
             "height": 72,
             "spriteConfidence": "custom-photo",
-            "decorationBonus": 0.08
+            "decorationBonus": 0.025
         },
         {
             "objectId": 228,
@@ -1598,20 +1588,95 @@
             "exp": 16,
             "gridW": 1,
             "gridH": 1,
-            "costCoins": 4000,
+            "costCoins": 12000,
             "costFortune": 0,
             "buildTimeSec": 0,
             "anm": "ANM_DECO_SILVER_MAPLE_1X1",
             "spriteFile": "silver_maple.png",
             "confidence": "custom",
-            "houseBonusScaled": 200,
-            "houseBonusPercentApprox": 2,
-            "influenceRadiusTiles": 2,
-            "bonusNote": "100 scaled ~= 1% toward house influence; rent uses (influence+10000)/10000",
+            "houseBonusScaled": 350,
+            "houseBonusPercentApprox": 3.5,
+            "influenceRadiusTiles": 1,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
             "width": 42,
             "height": 80,
             "spriteConfidence": "custom-photo",
-            "decorationBonus": 0.02
+            "decorationBonus": 0.035
+        },
+        {
+            "objectId": 232,
+            "constant": "DECO_REFLECTING_POOL",
+            "nameTid": -1,
+            "name": "Piscina ornamental",
+            "descTid": -1,
+            "level": 18,
+            "exp": 4000,
+            "gridW": 10,
+            "gridH": 2,
+            "costCoins": 200000,
+            "costFortune": 0,
+            "buildTimeSec": 0,
+            "anm": "ANM_DECO_REFLECTING_POOL_8X2",
+            "spriteFile": "reflecting_pool.png",
+            "confidence": "custom",
+            "houseBonusScaled": 1000,
+            "houseBonusPercentApprox": 10,
+            "influenceRadiusTiles": 8,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
+            "width": 317,
+            "height": 70,
+            "spriteConfidence": "custom-photo",
+            "decorationBonus": 0.1
+        },
+        {
+            "objectId": 233,
+            "constant": "DECO_REFLECTING_POOL_V",
+            "nameTid": -1,
+            "name": "Piscina ornamental (vertical)",
+            "descTid": -1,
+            "level": 18,
+            "exp": 4000,
+            "gridW": 2,
+            "gridH": 10,
+            "costCoins": 200000,
+            "costFortune": 0,
+            "buildTimeSec": 0,
+            "anm": "ANM_DECO_REFLECTING_POOL_2X8",
+            "spriteFile": "reflecting_pool_v.png",
+            "confidence": "custom",
+            "houseBonusScaled": 1000,
+            "houseBonusPercentApprox": 10,
+            "influenceRadiusTiles": 8,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
+            "width": 60,
+            "height": 317,
+            "spriteConfidence": "custom-photo",
+            "decorationBonus": 0.1
+        },
+        {
+            "objectId": 234,
+            "constant": "DECO_SWIMMING_POOL",
+            "nameTid": -1,
+            "name": "Piscina",
+            "descTid": -1,
+            "level": 12,
+            "exp": 1200,
+            "gridW": 2,
+            "gridH": 2,
+            "costCoins": 50000,
+            "costFortune": 0,
+            "buildTimeSec": 0,
+            "anm": "ANM_DECO_SWIMMING_POOL_2X2",
+            "spriteFile": "swimming_pool.png",
+            "confidence": "custom",
+            "houseBonusScaled": 500,
+            "houseBonusPercentApprox": 5,
+            "influenceRadiusTiles": 8,
+            "bonusNote": "100 scaled ~= 1% toward house/commerce influence; payout uses (influence+10000)/10000",
+            "width": 70,
+            "height": 70,
+            "spriteConfidence": "custom-photo",
+            "decorationBonus": 0.05
         }
     ],
     "wonders": [
@@ -1637,7 +1702,11 @@
             "instantBuildFactor": 1000,
             "width": 96,
             "height": 180,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 1,
+            "diamondReward": 0,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 35,
@@ -1661,7 +1730,11 @@
             "instantBuildFactor": 2000,
             "width": 120,
             "height": 144,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 1,
+            "diamondReward": 0,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 215,
@@ -1685,7 +1758,11 @@
             "instantBuildFactor": 2500,
             "width": 129,
             "height": 220,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 1,
+            "diamondReward": 0,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 36,
@@ -1697,7 +1774,7 @@
             "exp": 800,
             "gridW": 6,
             "gridH": 5,
-            "costCoins": 599000,
+            "costCoins": 600000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1709,7 +1786,11 @@
             "instantBuildFactor": 3000,
             "width": 190,
             "height": 187,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 1,
+            "diamondReward": 0,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 152,
@@ -1721,7 +1802,7 @@
             "exp": 1400,
             "gridW": 4,
             "gridH": 5,
-            "costCoins": 950000,
+            "costCoins": 1000000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1733,7 +1814,11 @@
             "instantBuildFactor": 4000,
             "width": 132,
             "height": 174,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 1,
+            "diamondReward": 1,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 200,
@@ -1745,7 +1830,7 @@
             "exp": 2500,
             "gridW": 6,
             "gridH": 3,
-            "costCoins": 1506000,
+            "costCoins": 1600000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1757,7 +1842,11 @@
             "instantBuildFactor": 2500,
             "width": 196,
             "height": 225,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 3,
+            "diamondReward": 0,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 202,
@@ -1769,7 +1858,7 @@
             "exp": 7000,
             "gridW": 4,
             "gridH": 2,
-            "costCoins": 3006000,
+            "costCoins": 3300000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1781,7 +1870,11 @@
             "instantBuildFactor": 3500,
             "width": 258,
             "height": 258,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 4,
+            "diamondReward": 1,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 203,
@@ -1805,7 +1898,11 @@
             "instantBuildFactor": 4000,
             "width": 170,
             "height": 357,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 2,
+            "diamondReward": 2,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 204,
@@ -1817,7 +1914,7 @@
             "exp": 3000,
             "gridW": 9,
             "gridH": 4,
-            "costCoins": 1896000,
+            "costCoins": 2000000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1829,7 +1926,11 @@
             "instantBuildFactor": 3500,
             "width": 288,
             "height": 360,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 3,
+            "diamondReward": 1,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 205,
@@ -1841,7 +1942,7 @@
             "exp": 6000,
             "gridW": 6,
             "gridH": 5,
-            "costCoins": 4766000,
+            "costCoins": 4800000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1853,7 +1954,11 @@
             "instantBuildFactor": 5000,
             "width": 196,
             "height": 320,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 6,
+            "diamondReward": 1,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 211,
@@ -1877,7 +1982,11 @@
             "instantBuildFactor": 4500,
             "width": 300,
             "height": 420,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 6,
+            "diamondReward": 3,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 212,
@@ -1889,7 +1998,7 @@
             "exp": 1500,
             "gridW": 4,
             "gridH": 4,
-            "costCoins": 755000,
+            "costCoins": 800000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1901,7 +2010,11 @@
             "instantBuildFactor": 2000,
             "width": 140,
             "height": 200,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 1,
+            "diamondReward": 0,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 213,
@@ -1913,7 +2026,7 @@
             "exp": 2200,
             "gridW": 5,
             "gridH": 4,
-            "costCoins": 1196000,
+            "costCoins": 1350000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1925,7 +2038,11 @@
             "instantBuildFactor": 3000,
             "width": 160,
             "height": 256,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 2,
+            "diamondReward": 0,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         },
         {
             "objectId": 214,
@@ -1937,7 +2054,7 @@
             "exp": 3500,
             "gridW": 5,
             "gridH": 3,
-            "costCoins": 2387000,
+            "costCoins": 2500000,
             "costFortune": 0,
             "costDiamonds": 0,
             "buildTimeSec": 0,
@@ -1949,7 +2066,11 @@
             "instantBuildFactor": 3500,
             "width": 156,
             "height": 350,
-            "spriteConfidence": "custom-photo"
+            "spriteConfidence": "custom-photo",
+            "goldReward": 3,
+            "diamondReward": 1,
+            "goldIntervalSec": 604800,
+            "diamondIntervalSec": 604800
         }
     ],
     "hq": {
@@ -1977,7 +2098,12 @@
         "zoneH": 16,
         "zonesX": 5,
         "zonesY": 5,
-        "baseCost": 50000,
-        "costGrowth": 3
+        "costsByOffset": {
+            "1,0": 500000,
+            "1,1": 750000,
+            "2,0": 1000000,
+            "2,1": 1500000,
+            "2,2": 2000000
+        }
     }
 }

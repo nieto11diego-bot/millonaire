@@ -49,8 +49,8 @@ export class ContractsUI {
     const bonus = houseContractBonusPercent(building?.def);
     if (this.subEl) {
       this.subEl.textContent =
-        bonus > 0
-          ? `Elige un contrato de alquiler. Botín +${bonus}% en esta casa.`
+        bonus !== 0
+          ? `Elige un contrato de alquiler. Recompensa ${bonus > 0 ? "+" : ""}${bonus}% en esta casa.`
           : "Elige un contrato de alquiler.";
     }
     this.render();
@@ -77,7 +77,8 @@ export class ContractsUI {
 
     for (const c of this.contracts) {
       const cost = contractCost(c, def);
-      const income = contractIncome(c, def);
+      const influence = this.building.runtime?.influence || 0;
+      const income = contractIncome(c, def, influence);
       const dur = formatDuration(contractDurationMs(c) / TIME_SCALE);
       const canAfford = cash >= cost;
 

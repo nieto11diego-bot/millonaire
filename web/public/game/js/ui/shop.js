@@ -1,7 +1,8 @@
 import { costHtml, cashHtml } from "./money.js";
 import {
   normalizedBuildCost,
-  commerceCycleReward,
+  commerceRentPerCustomer,
+  COMMERCE_CYCLE_SEC,
   usesLootEconomy,
   getBuildingProductionPerMinute,
   houseMaxPeople,
@@ -108,19 +109,16 @@ export class ShopUI {
       const ppl = houseMaxPeople(item);
       const pplLabel = ppl > 0 ? ` · ${ppl} pers.` : "";
       const bonus = houseContractBonusPercent(item);
-      const bonusLabel = bonus > 0 ? ` · +${bonus}% botín` : "";
+      const bonusLabel =
+        bonus !== 0 ? ` · ${bonus > 0 ? "+" : ""}${bonus}% contrato` : "";
       return meta(`${size} · contratos${pplLabel}${bonusLabel}`);
     }
-    if (item.category === "commercial" && usesLootEconomy(item)) {
-      const perMin = Math.round(getBuildingProductionPerMinute(item) * 10) / 10;
-      return meta(`${size} · ${cashHtml(perMin)}/min`);
-    }
-    if (item.category === "commercial" && item.rewardSec != null) {
-      const sec = item.rewardSec;
+    if (item.category === "commercial") {
+      const sec = COMMERCE_CYCLE_SEC;
       const label =
         sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.round(sec / 60)}m` : `${Math.round(sec / 3600)}h`;
-      const payout = cashHtml(commerceCycleReward(item));
-      return meta(`${size} · ${payout} / ${label}`);
+      const rate = cashHtml(commerceRentPerCustomer(item));
+      return meta(`${size} · ${rate}/cliente / ${label}`);
     }
     if (item.category === "wonder") {
       const pct =
@@ -129,7 +127,13 @@ export class ShopUI {
           : item.rewardBonusScaled != null
             ? Math.round((item.rewardBonusScaled / 100) * 100) / 100
             : 0;
-      return meta(`${size} · +${pct}% global (acumula)`);
+      const gold = item.goldReward || 0;
+      const dia = item.diamondReward || 0;
+      const parts = [];
+      if (gold > 0) parts.push(`${gold} oro`);
+      if (dia > 0) parts.push(`${dia} diam.`);
+      const prod = parts.length ? ` · ${parts.join(" + ")}/7d` : "";
+      return meta(`${size} · +${pct}% global${prod}`);
     }
     if (item.houseBonusPercentApprox != null || item.houseBonusScaled != null) {
       const pct =

@@ -1,6 +1,7 @@
 /**
  * Equal land parcels (Millionaire City style).
  * Only owned zones are buildable; adjacent locked zones show "For Sale".
+ * Purchase price is fixed by distance from the starter parcel (not by buy order).
  */
 export class ExpansionLayer {
   /**
@@ -10,10 +11,9 @@ export class ExpansionLayer {
    * @param {{
    *   zoneW?: number,
    *   zoneH?: number,
-   *   baseCost?: number,
-   *   costGrowth?: number,
    *   startZx?: number,
    *   startZy?: number,
+   *   costsByOffset?: Record<string, number>,
    * }} [opts]
    */
   constructor(cols, rows, tile = 32, opts = {}) {
@@ -24,8 +24,8 @@ export class ExpansionLayer {
     this.zoneH = opts.zoneH ?? 16;
     this.zonesX = Math.floor(cols / this.zoneW);
     this.zonesY = Math.floor(rows / this.zoneH);
-    this.baseCost = opts.baseCost ?? 50_000;
-    this.costGrowth = opts.costGrowth ?? 3;
+    /** @type {Record<string, number>} */
+    this.costsByOffset = { ...DEFAULT_COSTS_BY_OFFSET, ...(opts.costsByOffset || {}) };
     /** @type {Set<string>} */
     this.owned = new Set();
     this.boughtCount = 0;
@@ -95,14 +95,53 @@ export class ExpansionLayer {
     return this.isAdjacentToOwned(zx, zy);
   }
 
-  /** Next purchase price (escalates with each buy). */
-  nextCost() {
-    return Math.round(this.baseCost * Math.pow(this.costGrowth, this.boughtCount));
+  /** World-space center of the "EN VENTA" sign for a zone. */
+  signCenter(zx, zy) {
+    const r = this.zoneRect(zx, zy);
+    return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+  }
+
+  /**
+   * Hit-test the for-sale sign (board + post), not the whole parcel.
+   * Generous padding so fingers can tap it on mobile.
+   * @returns {{ zx: number, zy: number } | null}
+   */
+  hitTestSign(wx, wy) {
+    /** @type {{ zx: number, zy: number } | null} */
+    let hit = null;
+    this.forEachZone((zx, zy) => {
+      if (!this.isBuyable(zx, zy)) return;
+      const { x: cx, y: cy } = this.signCenter(zx, zy);
+      // Matches renderer._drawForSaleSign geometry (bw=102, bh=52, by=-56, post to ~52)
+      const pad = 20;
+      const left = cx - 51 - pad;
+      const right = cx + 51 + pad;
+      const top = cy - 56 - pad;
+      const bottom = cy + 52 + pad;
+      if (wx >= left && wx <= right && wy >= top && wy <= bottom) {
+        hit = { zx, zy };
+      }
+    });
+    return hit;
+  }
+
+  /**
+   * Fixed price from Chebyshev offset to starter: key = `${max},${min}` of (|dx|,|dy|).
+   * Center (0,0) is free (starter). Unknown offsets return null.
+   */
+  priceAt(zx, zy) {
+    const dx = Math.abs(zx - this.startZx);
+    const dy = Math.abs(zy - this.startZy);
+    const a = Math.max(dx, dy);
+    const b = Math.min(dx, dy);
+    if (a === 0) return 0;
+    const price = this.costsByOffset[`${a},${b}`];
+    return price != null ? Number(price) : null;
   }
 
   costFor(zx, zy) {
     if (!this.isBuyable(zx, zy)) return null;
-    return this.nextCost();
+    return this.priceAt(zx, zy);
   }
 
   /**
@@ -112,7 +151,10 @@ export class ExpansionLayer {
     if (!this.isBuyable(zx, zy)) {
       return { ok: false, reason: "Esta parcela no está a la venta." };
     }
-    const cost = this.nextCost();
+    const cost = this.priceAt(zx, zy);
+    if (cost == null || cost < 0) {
+      return { ok: false, reason: "Precio de expansión no definido." };
+    }
     this.owned.add(this.key(zx, zy));
     this.boughtCount += 1;
     return { ok: true, cost };
@@ -144,3 +186,12 @@ export class ExpansionLayer {
     }
   }
 }
+
+/** Default 5×5 ring prices keyed by `${maxOffset},${minOffset}` from starter. */
+const DEFAULT_COSTS_BY_OFFSET = {
+  "1,0": 500_000, // orthogonal ring 1
+  "1,1": 750_000, // diagonal ring 1
+  "2,0": 1_000_000, // axis mid-edge
+  "2,1": 1_500_000, // near-corner edge
+  "2,2": 2_000_000, // corners
+};

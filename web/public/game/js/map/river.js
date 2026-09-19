@@ -61,11 +61,11 @@ export class RiverLayer {
 
     const marginRight = opts.marginRight ?? 5;
     const baseX = this.cols - marginRight - 4; // city ends left of river; land strip on far right
-    const minHalf = 1.15;
-    const maxHalf = 2.6;
+    const minHalf = 0.7;
+    const maxHalf = 1.55;
 
     let x = baseX + (this._rand() - 0.5) * 1.5;
-    let halfW = 1.6 + this._rand() * 0.6;
+    let halfW = 0.95 + this._rand() * 0.35;
     let vx = (this._rand() - 0.5) * 0.15;
 
     const path = [];
@@ -88,9 +88,9 @@ export class RiverLayer {
       }
 
       // Width: pulse + random bays
-      halfW += (this._rand() - 0.5) * 0.12;
-      if (this._rand() < 0.04) halfW += 0.55 + this._rand() * 0.7; // bay
-      halfW = Math.max(minHalf, Math.min(maxHalf, halfW * 0.985 + 1.55 * 0.015));
+      halfW += (this._rand() - 0.5) * 0.08;
+      if (this._rand() < 0.03) halfW += 0.28 + this._rand() * 0.35; // bay
+      halfW = Math.max(minHalf, Math.min(maxHalf, halfW * 0.985 + 0.95 * 0.015));
 
       path.push({ x, y, halfW });
     }

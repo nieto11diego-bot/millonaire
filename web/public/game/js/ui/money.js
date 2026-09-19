@@ -1,7 +1,7 @@
 /** Shared cash / gold / diamond icon + amount formatting. */
 
 export const CASH_ICON = "assets/ui/icon_cash.png";
-export const GOLD_ICON = "assets/ui/icon_gold.svg";
+export const GOLD_ICON = "assets/ui/icon_gold.png";
 export const DIAMOND_ICON = "assets/ui/icon_diamond.svg";
 
 /**

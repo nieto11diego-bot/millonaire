@@ -48,7 +48,7 @@
             <strong id="cash">50000000</strong>
           </div>
           <div class="money-row money-row--gold" title="Lingotes de oro" data-tip="Lingotes de oro: moneda premium">
-            <img class="money-icon" src="assets/ui/icon_gold.svg" alt="" />
+            <img class="money-icon" src="assets/ui/icon_gold.png" alt="" />
             <strong id="gold">50</strong>
           </div>
           <div class="money-row money-row--diamond" title="Diamantes" data-tip="Diamantes: moneda rara para edificios especiales">
@@ -76,6 +76,18 @@
       </aside>
       <div id="building-tooltip" class="bldg-tip" hidden></div>
       <div id="control-tip" class="control-tip" hidden></div>
+      <div id="place-confirm" class="place-confirm" hidden>
+        <button type="button" id="place-cancel" class="place-confirm-btn place-confirm-btn--cancel" title="Cancelar" aria-label="Cancelar colocación">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.3 5.7a1 1 0 0 0-1.4-1.4L12 9.2 7.1 4.3a1 1 0 0 0-1.4 1.4L10.6 12l-4.9 4.9a1 1 0 1 0 1.4 1.4L12 14.8l4.9 4.9a1 1 0 0 0 1.4-1.4L13.4 12l4.9-4.9z"/></svg>
+        </button>
+        <div class="place-confirm-meta">
+          <strong id="place-confirm-name">Colocar</strong>
+          <span id="place-confirm-hint">Confirma o toca otro sitio</span>
+        </div>
+        <button type="button" id="place-ok" class="place-confirm-btn place-confirm-btn--ok" title="Confirmar" aria-label="Confirmar colocación">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.2 16.6 4.8 12.2a1 1 0 0 1 1.4-1.4l3 3 8-8a1 1 0 1 1 1.4 1.4l-8.7 8.7a1 1 0 0 1-1.4 0z"/></svg>
+        </button>
+      </div>
 
       <div class="zoom-stack">
         <button type="button" id="zoom-in" class="zoom-btn" title="Acercar" data-tip="Acercar mapa">+</button>
@@ -84,6 +96,25 @@
       </div>
 
       <nav class="dock" aria-label="Herramientas">
+        <div class="dock-flyout" id="road-flyout" hidden>
+          <button type="button" class="dock-btn dock-btn--sub active" id="btn-road-normal" title="Carretera" aria-pressed="true" data-tip="Carretera normal">
+            <img class="dock-glyph dock-glyph--img dock-glyph--road" src="assets/roads/straight_ew.png" alt="" />
+          </button>
+          <button type="button" class="dock-btn dock-btn--sub" id="btn-road-zebra" title="Paso de cebra" aria-pressed="false" data-tip="Paso de cebra: pinta sobre carretera o vacío">
+            <img class="dock-glyph dock-glyph--img dock-glyph--road" src="assets/ui/icon_zebra.png" alt="" />
+          </button>
+          <button type="button" class="dock-btn dock-btn--sub" id="btn-road-path" title="Camino" aria-pressed="false" data-tip="Camino de tierra: pinta sendas peatonales">
+            <img class="dock-glyph dock-glyph--img dock-glyph--road" src="assets/ui/icon_path.png" alt="" />
+          </button>
+        </div>
+        <div class="dock-flyout" id="edit-flyout" hidden>
+          <button type="button" class="dock-btn dock-btn--sub" id="btn-erase" title="Destruir" aria-pressed="false" data-tip="Destruir: carreteras o edificios (reembolso 50%)">
+            <img class="dock-glyph dock-glyph--img dock-glyph--erase" src="assets/ui/icon_excavator.png" alt="" />
+          </button>
+          <button type="button" class="dock-btn dock-btn--sub" id="btn-move" title="Reubicar" aria-pressed="false" data-tip="Reubicar: mueve edificios (cuesta el 10% del precio)">
+            <img class="dock-glyph dock-glyph--img dock-glyph--move" src="assets/ui/icon_move.png" alt="" />
+          </button>
+        </div>
         <div class="dock-inner">
           <button type="button" class="dock-btn advisor-btn" id="btn-missions" title="Misiones" data-tip="Misiones: objetivos y recompensas">
             <span class="dock-glyph missions" aria-hidden="true">?</span>
@@ -92,17 +123,14 @@
           <button type="button" class="dock-btn" id="btn-shop" title="Tienda" aria-pressed="false" data-tip="Tienda: casas, comercios, decoración y maravillas">
             <span class="dock-glyph house" aria-hidden="true"></span>
           </button>
-          <button type="button" class="dock-btn" id="btn-road" title="Construir carreteras" aria-pressed="false" data-tip="Carreteras: conecta edificios al Headquarters">
+          <button type="button" class="dock-btn" id="btn-road" title="Construir carreteras y caminos" aria-pressed="false" data-tip="Vías: carreteras, paso de cebra y caminos">
             <img class="dock-glyph dock-glyph--img dock-glyph--road" src="assets/roads/straight_ew.png" alt="" />
           </button>
           <button type="button" class="dock-btn active" id="btn-pan" title="Puntero: seleccionar y mover cámara" aria-pressed="true" data-tip="Puntero: tocar para interactuar, arrastrar para mover el mapa">
             <img class="dock-glyph dock-glyph--img dock-glyph--pan" src="assets/ui/icon_pointer.png" alt="" />
           </button>
-          <button type="button" class="dock-btn" id="btn-erase" title="Borrar" data-tip="Excavadora: destruye carreteras o edificios (reembolso 50%)">
-            <img class="dock-glyph dock-glyph--img dock-glyph--erase" src="assets/ui/icon_excavator.png" alt="" />
-          </button>
-          <button type="button" class="dock-btn" id="btn-move" title="Mover edificios y decoración" data-tip="Mover: recoloca edificios (cuesta el 10% del precio)">
-            <img class="dock-glyph dock-glyph--img dock-glyph--move" src="assets/ui/icon_move.png" alt="" />
+          <button type="button" class="dock-btn" id="btn-edit" title="Editar" aria-pressed="false" data-tip="Editar: destruir o reubicar">
+            <img class="dock-glyph dock-glyph--img dock-glyph--edit" src="assets/ui/icon_edit.png" alt="" />
           </button>
           <button type="button" class="dock-btn dock-btn--danger" id="btn-new-game" title="Nueva partida" data-tip="Nueva partida: borra el progreso y empieza de cero">
             <span class="dock-glyph new-game" aria-hidden="true"></span>
@@ -170,9 +198,24 @@
         </div>
       </div>
     </div>
+
+    <div id="levelup-panel" class="expand-panel levelup-panel" hidden>
+      <div class="expand-window levelup-window" role="dialog" aria-labelledby="levelup-title" aria-describedby="levelup-copy">
+        <header class="expand-header">
+          <h2 id="levelup-title">¡Subiste de nivel!</h2>
+        </header>
+        <p class="expand-copy" id="levelup-copy">Has alcanzado un nuevo nivel.</p>
+        <p class="levelup-level" id="levelup-level">Nivel 2</p>
+        <p class="expand-ask">Recompensa obtenida</p>
+        <div class="levelup-rewards" id="levelup-rewards"></div>
+        <div class="expand-actions">
+          <button type="button" id="levelup-accept" class="expand-btn expand-btn--buy">Aceptar</button>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/main.js?v=20260919k"></script>
   <script>
     // ES modules no funcionan con file:// — hace falta el servidor local.
     if (location.protocol === "file:") {

@@ -1,6 +1,7 @@
 import { spriteOrigin } from "./grid.js";
 import { FloatingRewards } from "./floatingRewards.js";
 import { TIME_SCALE, formatDuration, usesLootEconomy, lootIntervalMs } from "../economy.js";
+import { chestTierByLevel } from "./dailyChests.js";
 
 /**
  * Canvas renderer: grass grid + buildings with Y-sort.
@@ -35,10 +36,35 @@ export class Renderer {
     this.expansions = null;
     /** @type {import("./nature.js").NatureLayer|null} */
     this.nature = null;
+    /** @type {import("./dailyChests.js").DailyChestLayer|null} */
+    this.dailyChests = null;
     /** Show tile grid only while placing / moving. */
     this.showGrid = false;
-    /** Flat base grass color. */
+    /** Base grass mid-tone (lighter moss). */
     this.grassColor = "#7BA73B";
+    /**
+     * Weighted moss palette — same photo hues, lifted brighter
+     * so the floor reads as light Minecraft-style grass.
+     * @type {{ rgb: [number, number, number], w: number }[]}
+     */
+    this.grassPalette = [
+      { rgb: [0xb8, 0xd4, 0x4a], w: 8 },
+      { rgb: [0xac, 0xc8, 0x42], w: 12 },
+      { rgb: [0xa0, 0xbc, 0x3c], w: 18 },
+      { rgb: [0x94, 0xb0, 0x38], w: 22 },
+      { rgb: [0x88, 0xa8, 0x34], w: 28 },
+      { rgb: [0x7c, 0xa0, 0x32], w: 34 },
+      { rgb: [0x74, 0x98, 0x30], w: 38 },
+      { rgb: [0x6c, 0x90, 0x2c], w: 42 },
+      { rgb: [0x64, 0x88, 0x2a], w: 40 },
+      { rgb: [0x5c, 0x80, 0x28], w: 36 },
+      { rgb: [0x54, 0x74, 0x24], w: 30 },
+      { rgb: [0x4c, 0x6c, 0x22], w: 22 },
+      { rgb: [0x44, 0x60, 0x1e], w: 14 },
+      { rgb: [0x3a, 0x52, 0x18], w: 8 },
+    ];
+    /** @type {HTMLCanvasElement | null} */
+    this._grassLayer = null;
     /** @type {{ zx: number, zy: number } | null} */
     this.expandHover = null;
     this.floatingRewards = new FloatingRewards();
@@ -58,6 +84,7 @@ export class Renderer {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.cssWidth = w;
     this.cssHeight = h;
+    this.clampCamera();
   }
 
   async preload(defs, extraUrls = []) {
@@ -66,7 +93,7 @@ export class Renderer {
         ...defs.map((d) => d.spriteUrl).filter(Boolean),
         ...extraUrls,
         "assets/ui/icon_cash.png",
-        "assets/ui/icon_gold.svg",
+        "assets/ui/icon_gold.png",
         "assets/ui/icon_diamond.svg",
         "assets/ui/icon_contract.svg",
       ]),
@@ -93,6 +120,25 @@ export class Renderer {
       x: (sx - this.cssWidth / 2) / z + this.camera.x + (this.grid.cols * this.grid.tile) / 2,
       y: (sy - this.cssHeight / 2) / z + this.camera.y + (this.grid.rows * this.grid.tile) / 2,
     };
+  }
+
+  /**
+   * Keep the viewport near the map bounds (25% larger than the grid).
+   * If zoomed out so the view is larger than that area, the camera stays centered.
+   */
+  clampCamera() {
+    const z = Math.max(0.01, this.camera.zoom);
+    const mapW = this.grid.cols * this.grid.tile;
+    const mapH = this.grid.rows * this.grid.tile;
+    // Allow panning a bit past the map edge (bounds = map × 1.25).
+    const boundW = mapW * 1.25;
+    const boundH = mapH * 1.25;
+    const halfViewW = this.cssWidth / (2 * z);
+    const halfViewH = this.cssHeight / (2 * z);
+    const maxX = Math.max(0, boundW / 2 - halfViewW);
+    const maxY = Math.max(0, boundH / 2 - halfViewH);
+    this.camera.x = Math.max(-maxX, Math.min(maxX, this.camera.x));
+    this.camera.y = Math.max(-maxY, Math.min(maxY, this.camera.y));
   }
 
   /** World coords → canvas CSS pixel position. */
@@ -127,6 +173,7 @@ export class Renderer {
   }
 
   draw() {
+    this.clampCamera();
     const ctx = this.ctx;
     const { tile, cols, rows } = this.grid;
     const z = this.camera.zoom;
@@ -139,9 +186,8 @@ export class Renderer {
     ctx.scale(z, z);
     ctx.translate(-mapW / 2 - this.camera.x, -mapH / 2 - this.camera.y);
 
-    // Base grass (suelo liso)
-    ctx.fillStyle = this.grassColor;
-    ctx.fillRect(0, 0, mapW, mapH);
+    // Base grass (mezcla aleatoria tipo césped Minecraft)
+    this._drawGrassFloor(ctx, mapW, mapH);
 
     // River (right edge), over grass, under roads
     this._drawRiver();
@@ -150,8 +196,9 @@ export class Renderer {
     this._drawExpansions();
 
     if (this.showGrid) {
-      ctx.strokeStyle = "rgba(0,0,0,0.12)";
+      // Dual-tone grid so lines stay visible on light and dark grass texels
       ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
       for (let x = 0; x <= cols; x++) {
         ctx.beginPath();
         ctx.moveTo(x * tile, 0);
@@ -162,6 +209,19 @@ export class Renderer {
         ctx.beginPath();
         ctx.moveTo(0, y * tile);
         ctx.lineTo(mapW, y * tile);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+      for (let x = 0; x <= cols; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * tile + 0.5, 0);
+        ctx.lineTo(x * tile + 0.5, mapH);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= rows; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * tile + 0.5);
+        ctx.lineTo(mapW, y * tile + 0.5);
         ctx.stroke();
       }
     }
@@ -246,8 +306,20 @@ export class Renderer {
       }
     }
 
+    if (this.dailyChests?.active) {
+      const c = this.dailyChests.active;
+      drawList.push({
+        bottom: c.ty + 1,
+        tx: c.tx,
+        draw: () => this._drawDailyChest(c),
+      });
+    }
+
     drawList.sort((a, b) => a.bottom - b.bottom || a.tx - b.tx);
     for (const entry of drawList) entry.draw();
+
+    // Category footprints while placing / moving / destroying
+    this._drawCategoryPerimeters();
 
     this._drawHighlight();
 
@@ -266,6 +338,136 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * Minecraft-style grass: soft biome patches + fine speckled texels
+   * using the moss photo palette (deterministic, cached).
+   */
+  _drawGrassFloor(ctx, mapW, mapH) {
+    const layer = this._ensureGrassLayer();
+    if (layer) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(layer, 0, 0, mapW, mapH);
+      return;
+    }
+    ctx.fillStyle = this.grassColor;
+    ctx.fillRect(0, 0, mapW, mapH);
+  }
+
+  /** Stable 0..1 hash. */
+  _grassHash(x, y, salt = 0) {
+    let h = (Math.imul(x + salt * 3741, 374761393) ^ Math.imul(y + salt * 6682, 668265263)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  /** Smooth value noise in 0..1 (for large grass patches). */
+  _grassValueNoise(x, y) {
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const fx = x - x0;
+    const fy = y - y0;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const n00 = this._grassHash(x0, y0, 1);
+    const n10 = this._grassHash(x0 + 1, y0, 1);
+    const n01 = this._grassHash(x0, y0 + 1, 1);
+    const n11 = this._grassHash(x0 + 1, y0 + 1, 1);
+    const nx0 = n00 + (n10 - n00) * sx;
+    const nx1 = n01 + (n11 - n01) * sx;
+    return nx0 + (nx1 - nx0) * sy;
+  }
+
+  _pickGrassRgb(tx, ty, px, py) {
+    const palette = this.grassPalette;
+    const n = palette.length;
+
+    // Large soft patches (biome-ish) — bias toward a local mid tone
+    const patch = this._grassValueNoise(tx * 0.18 + px * 0.02, ty * 0.18 + py * 0.02);
+    const patch2 = this._grassValueNoise(tx * 0.07 + 20, ty * 0.07 + 11);
+    const baseT = patch * 0.65 + patch2 * 0.35;
+
+    // Fine Minecraft speckles (small random jumps near the base)
+    const speck = this._grassHash(tx * 8 + (px >> 1), ty * 8 + (py >> 1), 3);
+    const speck2 = this._grassHash(tx * 8 + (px >> 1), ty * 8 + (py >> 1), 7);
+
+    let t = baseT + (speck - 0.5) * 0.28 + (speck2 - 0.5) * 0.12;
+    t = Math.max(0, Math.min(0.999, t));
+
+    // Weighted pick along palette (heavier mid tones)
+    let total = 0;
+    for (const p of palette) total += p.w;
+    let target = t * total;
+    let i0 = 0;
+    for (; i0 < n - 1; i0++) {
+      if (target < palette[i0].w) break;
+      target -= palette[i0].w;
+    }
+    const i1 = Math.min(n - 1, i0 + 1);
+    const blend = Math.max(0, Math.min(1, target / Math.max(1, palette[i0].w)));
+
+    // Occasional bright highlight fleck
+    if (speck > 0.93 && speck2 > 0.7) {
+      return palette[0].rgb;
+    }
+    // Occasional deep shadow fleck
+    if (speck < 0.06 && speck2 < 0.35) {
+      return palette[n - 1].rgb;
+    }
+
+    const a = palette[i0].rgb;
+    const b = palette[i1].rgb;
+    return [
+      (a[0] + (b[0] - a[0]) * blend) | 0,
+      (a[1] + (b[1] - a[1]) * blend) | 0,
+      (a[2] + (b[2] - a[2]) * blend) | 0,
+    ];
+  }
+
+  _ensureGrassLayer() {
+    const { cols, rows, tile } = this.grid;
+    const key = `${cols}x${rows}x${tile}:v3`;
+    if (this._grassLayer && this._grassLayerKey === key) return this._grassLayer;
+
+    const mapW = cols * tile;
+    const mapH = rows * tile;
+    const canvas = document.createElement("canvas");
+    canvas.width = mapW;
+    canvas.height = mapH;
+    const gctx = canvas.getContext("2d", { willReadFrequently: false });
+    if (!gctx) return null;
+
+    // 2×2 texels → 16×16 “pixels” per tile, like Minecraft grass tops
+    const texel = 2;
+    const img = gctx.createImageData(mapW, mapH);
+    const data = img.data;
+
+    for (let ty = 0; ty < rows; ty++) {
+      for (let tx = 0; tx < cols; tx++) {
+        for (let py = 0; py < tile; py += texel) {
+          for (let px = 0; px < tile; px += texel) {
+            const [r, g, b] = this._pickGrassRgb(tx, ty, px, py);
+            for (let dy = 0; dy < texel; dy++) {
+              for (let dx = 0; dx < texel; dx++) {
+                const x = tx * tile + px + dx;
+                const y = ty * tile + py + dy;
+                const i = (y * mapW + x) * 4;
+                data[i] = r;
+                data[i + 1] = g;
+                data[i + 2] = b;
+                data[i + 3] = 255;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    gctx.putImageData(img, 0, 0);
+    this._grassLayer = canvas;
+    this._grassLayerKey = key;
+    return canvas;
+  }
+
   _drawRiver() {
     const river = this.river;
     const layer = river?.layerCanvas;
@@ -275,6 +477,47 @@ export class Renderer {
     const mapH = this.grid.rows * this.grid.tile;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(layer, 0, 0, mapW, mapH);
+  }
+
+  /**
+   * Colored footprint fills for all buildings while the edit grid is on.
+   * Houses red · commerce blue · wonders yellow · decorations green.
+   */
+  _drawCategoryPerimeters() {
+    if (!this.showGrid) return;
+    const ctx = this.ctx;
+    const tile = this.grid.tile;
+    const styles = {
+      house: { fill: "rgba(229, 57, 53, 0.42)", stroke: "#e53935" },
+      commercial: { fill: "rgba(30, 136, 229, 0.42)", stroke: "#1e88e5" },
+      wonder: { fill: "rgba(253, 216, 53, 0.42)", stroke: "#fdd835" },
+      decoration: { fill: "rgba(129, 199, 132, 0.45)", stroke: "#81c784" },
+    };
+    const hideId = this.hover?.hideId || null;
+
+    ctx.save();
+    ctx.lineJoin = "round";
+    for (const b of this.grid.buildings) {
+      if (hideId && b.id === hideId) continue;
+      const style = styles[b.def?.category];
+      if (!style) continue;
+      const x = b.tx * tile;
+      const y = b.ty * tile;
+      const w = b.def.gridW * tile;
+      const h = b.def.gridH * tile;
+
+      ctx.fillStyle = style.fill;
+      ctx.fillRect(x, y, w, h);
+
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.45)";
+      ctx.lineWidth = 3.5;
+      ctx.strokeRect(x + 0.75, y + 0.75, w - 1.5, h - 1.5);
+
+      ctx.strokeStyle = style.stroke;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 0.75, y + 0.75, w - 1.5, h - 1.5);
+    }
+    ctx.restore();
   }
 
   /** Perimeter outline for the building under Move / Destroy tools. */
@@ -528,7 +771,7 @@ export class Renderer {
   }
 
   /**
-   * Modern luxury "EN VENTA" sign (gold / vivid accents).
+   * "EN VENTA" sign — red board, white title, gold frame.
    * @param {number} cx
    * @param {number} cy
    * @param {number} cost
@@ -547,11 +790,11 @@ export class Renderer {
     const by = -56;
     const r = 10;
 
-    // Soft luxury glow under the board
+    // Soft glow under the board
     ctx.save();
-    ctx.shadowColor = hovered ? "rgba(255, 200, 60, 0.75)" : "rgba(255, 180, 40, 0.45)";
+    ctx.shadowColor = hovered ? "rgba(220, 40, 40, 0.7)" : "rgba(180, 20, 20, 0.4)";
     ctx.shadowBlur = hovered ? 18 : 10;
-    ctx.fillStyle = "rgba(255, 210, 80, 0.35)";
+    ctx.fillStyle = "rgba(255, 80, 80, 0.3)";
     this._roundRect(bx - 2, by - 2, bw + 4, bh + 4, r + 2);
     ctx.fill();
     ctx.restore();
@@ -575,11 +818,11 @@ export class Renderer {
     this._roundRect(-14, 44, 28, 8, 3);
     ctx.fill();
 
-    // Board fill — deep emerald → vivid teal
+    // Board fill — bright red → deep crimson
     const boardGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
-    boardGrad.addColorStop(0, "#1ee8b0");
-    boardGrad.addColorStop(0.45, "#0bb88a");
-    boardGrad.addColorStop(1, "#067a5c");
+    boardGrad.addColorStop(0, "#ff4a4a");
+    boardGrad.addColorStop(0.45, "#e01828");
+    boardGrad.addColorStop(1, "#a00e18");
     ctx.fillStyle = boardGrad;
     this._roundRect(bx, by, bw, bh, r);
     ctx.fill();
@@ -595,14 +838,14 @@ export class Renderer {
     this._roundRect(bx + 1.5, by + 1.5, bw - 3, bh - 3, r - 1);
     ctx.stroke();
 
-    // Inner highlight rim
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+    // Inner white highlight rim
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
     ctx.lineWidth = 1.2;
     this._roundRect(bx + 5, by + 5, bw - 10, bh - 10, r - 4);
     ctx.stroke();
 
-    // Accent stripe (hot coral)
-    ctx.fillStyle = "#ff4d6d";
+    // Accent stripe (white)
+    ctx.fillStyle = "#ffffff";
     this._roundRect(bx + 8, by + 8, bw - 16, 3, 1.5);
     ctx.fill();
 
@@ -610,9 +853,9 @@ export class Renderer {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "700 12px Fredoka, sans-serif";
-    ctx.fillStyle = "rgba(0, 40, 30, 0.35)";
+    ctx.fillStyle = "rgba(60, 0, 0, 0.35)";
     ctx.fillText("EN VENTA", 0.5, by + 20.5);
-    ctx.fillStyle = "#fffef0";
+    ctx.fillStyle = "#ffffff";
     ctx.fillText("EN VENTA", 0, by + 20);
 
     // Price row
@@ -629,13 +872,13 @@ export class Renderer {
       const x0 = -total / 2;
       ctx.drawImage(cashImg, x0, priceY - ih / 2, iw, ih);
       ctx.textAlign = "left";
-      ctx.fillStyle = "rgba(0, 40, 20, 0.4)";
+      ctx.fillStyle = "rgba(60, 0, 0, 0.4)";
       ctx.fillText(price, x0 + iw + gap + 0.6, priceY + 0.6);
-      ctx.fillStyle = "#fff45a";
+      ctx.fillStyle = "#ffffff";
       ctx.fillText(price, x0 + iw + gap, priceY);
       ctx.textAlign = "center";
     } else {
-      ctx.fillStyle = "#fff45a";
+      ctx.fillStyle = "#ffffff";
       ctx.fillText(price, 0, priceY);
     }
 
@@ -748,8 +991,10 @@ export class Renderer {
     if (b.def.category === "wonder") {
       const now = Date.now();
       const icons = [];
-      if (now >= (rt.goldReadyAt || 0)) icons.push("assets/ui/icon_gold.svg");
-      if (now >= (rt.diamondReadyAt || 0)) icons.push("assets/ui/icon_diamond.svg");
+      const gAt = Number(rt.goldReadyAt) || 0;
+      const dAt = Number(rt.diamondReadyAt) || 0;
+      if (gAt > 0 && now >= gAt) icons.push("assets/ui/icon_gold.png");
+      if (dAt > 0 && now >= dAt) icons.push("assets/ui/icon_diamond.svg");
       if (!icons.length) return;
 
       const iconScale = 1.35;
@@ -929,7 +1174,7 @@ export class Renderer {
       if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
       ctx.drawImage(img, drawX, drawY, def.width, def.height);
     } else {
-      ctx.fillStyle = "#3d6b2e";
+      ctx.fillStyle = "#6aad3a";
       ctx.fillRect(
         item.tx * this.grid.tile + 6,
         item.ty * this.grid.tile + 4,
@@ -937,5 +1182,79 @@ export class Renderer {
         this.grid.tile - 8
       );
     }
+  }
+
+  /**
+   * Procedural treasure chest tinted by tier color.
+   * @param {{ level: number, tx: number, ty: number }} chest
+   */
+  _drawDailyChest(chest) {
+    const tier = chestTierByLevel(chest.level);
+    if (!tier) return;
+    const ctx = this.ctx;
+    const tile = this.grid.tile;
+    const cx = chest.tx * tile + tile / 2;
+    const cy = chest.ty * tile + tile * 0.72;
+    const bob = Math.sin(Date.now() / 320) * 1.5;
+
+    ctx.save();
+    ctx.translate(cx, cy + bob);
+    ctx.scale(2, 2);
+
+    // Soft glow
+    ctx.fillStyle = tier.colorLight;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 16, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Body
+    const bw = 22;
+    const bh = 14;
+    const grad = ctx.createLinearGradient(-bw / 2, -bh, bw / 2, bh / 2);
+    grad.addColorStop(0, tier.colorLight);
+    grad.addColorStop(0.45, tier.color);
+    grad.addColorStop(1, tier.colorDark);
+    ctx.fillStyle = grad;
+    this._roundRect(-bw / 2, -bh + 2, bw, bh, 3);
+    ctx.fill();
+
+    // Lid
+    const lidGrad = ctx.createLinearGradient(0, -bh - 6, 0, -2);
+    lidGrad.addColorStop(0, tier.colorLight);
+    lidGrad.addColorStop(1, tier.color);
+    ctx.fillStyle = lidGrad;
+    this._roundRect(-bw / 2 - 1, -bh - 4, bw + 2, 9, 3);
+    ctx.fill();
+
+    // Gold band / clasp
+    ctx.fillStyle = "#ffe08a";
+    ctx.fillRect(-bw / 2, -2, bw, 3);
+    ctx.fillStyle = "#fff6c8";
+    ctx.beginPath();
+    ctx.arc(0, -1, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#b8860b";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Outline
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.lineWidth = 1.2;
+    this._roundRect(-bw / 2, -bh + 2, bw, bh, 3);
+    ctx.stroke();
+
+    // Level pip
+    ctx.fillStyle = "#fff";
+    ctx.font = "700 9px Fredoka, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeStyle = "rgba(0,0,0,0.45)";
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(String(tier.level), 0, -bh - 10);
+    ctx.fillText(String(tier.level), 0, -bh - 10);
+
+    ctx.restore();
   }
 }

@@ -4,7 +4,7 @@
  * Snapshot is versioned; buildings store objectId + runtime (not full defs).
  */
 
-import { TIME_SCALE, STATUS, createRuntime } from "./economy.js";
+import { TIME_SCALE, STATUS, createRuntime, migrateBuildingRuntime } from "./economy.js";
 import {
   fetchCloudSave,
   queueCloudSave,
@@ -206,13 +206,14 @@ export function hydrateRuntime(rt) {
  *   expansions: import("./map/expansions.js").ExpansionLayer,
  *   river: import("./map/river.js").RiverLayer,
  *   nature?: import("./map/nature.js").NatureLayer,
+ *   dailyChests?: import("./map/dailyChests.js").DailyChestLayer,
  *   missions: import("./missions.js").MissionTracker,
  *   renderer?: import("./map/renderer.js").Renderer,
  *   riverOpts?: { marginRight?: number, bridgeEvery?: number },
  * }} ctx
  */
 export function buildSnapshot(ctx) {
-  const { state, grid, roads, expansions, river, nature, missions, renderer, riverOpts } = ctx;
+  const { state, grid, roads, expansions, river, nature, dailyChests, missions, renderer, riverOpts } = ctx;
   return {
     version: SAVE_VERSION,
     savedAt: Date.now(),
@@ -233,6 +234,7 @@ export function buildSnapshot(ctx) {
     })),
     roads: serializeRoads(roads),
     nature: nature ? nature.serialize() : [],
+    dailyChests: dailyChests ? dailyChests.serialize() : null,
     expansions: {
       owned: [...expansions.owned],
       boughtCount: expansions.boughtCount,
@@ -279,6 +281,7 @@ function serializeRoads(roads) {
  *   expansions: import("./map/expansions.js").ExpansionLayer,
  *   river: import("./map/river.js").RiverLayer,
  *   nature?: import("./map/nature.js").NatureLayer,
+ *   dailyChests?: import("./map/dailyChests.js").DailyChestLayer,
  *   missions: import("./missions.js").MissionTracker,
  *   renderer?: import("./map/renderer.js").Renderer,
  *   defsByObjectId: Map<number, object>,
@@ -299,6 +302,7 @@ export function applySnapshot(snapshot, ctx) {
     expansions,
     river,
     nature,
+    dailyChests,
     missions,
     renderer,
     defsByObjectId,
@@ -333,7 +337,7 @@ export function applySnapshot(snapshot, ctx) {
   roads.kinds.fill(null);
   for (const tile of snapshot.roads || []) {
     if (!tile) continue;
-    roads.set(tile.tx, tile.ty, true, tile.kind === "zebra" ? "zebra" : "road");
+    roads.set(tile.tx, tile.ty, true, tile.kind === "zebra" ? "zebra" : tile.kind === "path" ? "path" : "road");
   }
 
   grid.clear();
@@ -346,9 +350,14 @@ export function applySnapshot(snapshot, ctx) {
       (row.constant && defsByConstant.get(row.constant)) ||
       null;
     if (!def) continue;
+    const runtime =
+      migrateBuildingRuntime(
+        def,
+        hydrateRuntime(row.runtime) || createRuntime(def, { skipBuild: true })
+      ) || createRuntime(def, { skipBuild: true });
     const placed = grid.placeSaved(def, row.tx, row.ty, {
       id: row.id,
-      runtime: hydrateRuntime(row.runtime) || createRuntime(def, { skipBuild: true }),
+      runtime,
     });
     if (!placed) continue;
     // Hard exclusion: never keep roads under a building footprint
@@ -366,6 +375,7 @@ export function applySnapshot(snapshot, ctx) {
           if (river?.has(x, y)) return true;
           if (roads?.has(x, y)) return true;
           if (grid.buildingAt(x, y)) return true;
+          if (dailyChests?.has(x, y)) return true;
         }
       }
       return false;
@@ -375,6 +385,10 @@ export function applySnapshot(snapshot, ctx) {
     } else {
       nature.clear();
     }
+  }
+
+  if (dailyChests) {
+    dailyChests.load(snapshot.dailyChests || null, null);
   }
 
   const ms = snapshot.missions || {};
@@ -407,6 +421,7 @@ export function applySnapshot(snapshot, ctx) {
     if (snapshot.camera.zoom != null) {
       renderer.camera.zoom = Math.max(0.2, Math.min(2, Number(snapshot.camera.zoom) || 1));
     }
+    renderer.clampCamera?.();
   }
 
   sim?.recomputeAll();

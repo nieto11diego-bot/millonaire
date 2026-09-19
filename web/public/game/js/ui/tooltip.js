@@ -10,8 +10,10 @@ import {
   houseMaxPeople,
   findContract,
   contractIncome,
+  contractCollectXp,
   houseContractBonusPercent,
   commerceCycleReward,
+  commerceRentPerCustomer,
   commerceCollectXp,
   commerceRewardDurationMs,
   wonderGoldRemainingMs,
@@ -20,6 +22,7 @@ import {
   wonderDiamondReady,
   wonderGoldReward,
   wonderDiamondReward,
+  wonderGoldIntervalMs,
   isConstructing,
   buildRemainingMs,
   buildProgressPct,
@@ -327,12 +330,17 @@ export class BuildingTooltip {
       const maxPeople = rt.maxPeople || houseMaxPeople(def);
       peopleText = maxPeople > 0 ? `${people}/${maxPeople}` : String(people);
       const contract = this.getContract?.(rt.contractId) || null;
-      const bonusPct = houseContractBonusPercent(def);
+      const bonusFrac = getBuildingDecorationBonus(this.building);
+      const bonusPct = Math.round(bonusFrac * 1000) / 10;
       const projected = contract
-        ? contractIncome(contract, def)
+        ? contractIncome(contract, def, rt.influence || 0)
         : houseIncome(def, people, rt.influence || 0);
       cashText = String(rt.status === STATUS.READY ? rt.lastIncome || projected : projected);
-      xpText = String(houseCollectXp(def, Number(cashText) || 0));
+      xpText = String(
+        contract
+          ? contractCollectXp(contract, Number(cashText) || 0)
+          : houseCollectXp(def, Number(cashText) || 0)
+      );
       if (!roadOk) {
         statusNote = "Sin carretera al HQ";
       } else if (rt.status === STATUS.IDLE || rt.contractId == null) {
@@ -414,16 +422,21 @@ export class BuildingTooltip {
         };
       }
 
-      const projected = commerceCycleReward(def, rt.influence || 0);
+      const customers = rt.customers ?? 0;
+      const influence = rt.influence || 0;
+      const projected = commerceCycleReward(def, customers, influence);
       cashText = String(rt.status === STATUS.READY ? rt.lastIncome || projected : projected);
       xpText = String(commerceCollectXp(def, Number(cashText) || 0));
-      peopleText = formatDuration(commerceRewardDurationMs(def));
-      const infl = rt.influence || 0;
-      const bonusPct = Math.round((infl / 100) * 10) / 10;
+      peopleLabel = "Clientes";
+      peopleText = String(customers);
+      const rate = commerceRentPerCustomer(def);
+      const bonusFrac = getBuildingDecorationBonus(this.building);
+      const bonusPct = Math.round(bonusFrac * 1000) / 10;
       if (roadOk && rt.status === STATUS.WAITING && rt.durationMs > 0) {
         showTimer = true;
         timeText = formatTipTime(rt.remainingMs / TIME_SCALE);
         progressPct = Math.max(0, Math.min(100, (1 - rt.remainingMs / rt.durationMs) * 100));
+        statusNote = `$${rate}/cliente`;
       } else if (roadOk && rt.status === STATUS.READY) {
         showTimer = true;
         timeText = "¡Listo!";
@@ -574,12 +587,16 @@ export class BuildingTooltip {
       } else {
         const maxP = houseMaxPeople(def);
         const contractBonus = houseContractBonusPercent(def);
+        const bonusLabel =
+          contractBonus !== 0
+            ? `${contractBonus > 0 ? "+" : ""}${contractBonus}%`
+            : null;
         extra = `
           ${
-            contractBonus > 0
+            bonusLabel
               ? `<div class="bldg-tip-tenants">
             <span class="bldg-tip-tenants-label">Bonus contrato:</span>
-            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">+${escapeHtml(String(contractBonus))}%</span></span>
+            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(bonusLabel)}</span></span>
           </div>`
               : ""
           }
@@ -605,56 +622,41 @@ export class BuildingTooltip {
           : def.rewardBonusScaled != null
             ? Math.round((def.rewardBonusScaled / 100) * 100) / 100
             : 0;
+      const gold = wonderGoldReward(def);
+      const dia = wonderDiamondReward(def);
+      const prodParts = [];
+      if (gold > 0) prodParts.push(`${gold} oro`);
+      if (dia > 0) prodParts.push(`${dia} diamante${dia === 1 ? "" : "s"}`);
+      const prodLabel = prodParts.length ? prodParts.join(" + ") : "—";
+      const cycle = formatDuration(wonderGoldIntervalMs(def));
       extra = `
         <div class="bldg-tip-status">+${escapeHtml(String(pct))}% global a casas y comercios (se acumula)</div>
+        <div class="bldg-tip-tenants">
+          <span class="bldg-tip-tenants-label">Produce:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(prodLabel)}</span></span>
+        </div>
+        <div class="bldg-tip-tenants">
+          <span class="bldg-tip-tenants-label">Cada:</span>
+          <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(cycle)}</span></span>
+        </div>
         <div class="bldg-tip-tenants">
           <span class="bldg-tip-tenants-label">Construcción:</span>
           <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
         </div>
-        <div class="bldg-tip-footnote">También produce oro y diamantes</div>
+        <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
       `;
     } else if (def.category === "commercial") {
-      if (usesLootEconomy(def)) {
-        const perMin = Math.round(getBuildingProductionPerMinute(def) * 10) / 10;
-        const cap = maxLootOf(def);
-        const interval = formatDuration((def.lootInterval || 60) * 1000);
-        const radio = def.influenceRadiusTiles != null ? String(def.influenceRadiusTiles) : "—";
-        extra = `
-          <div class="bldg-tip-status">Botín · bonus = % de cada casa en radio</div>
-          <div class="bldg-tip-tenants">
-            <span class="bldg-tip-tenants-label">Producción:</span>
-            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${cashHtml(perMin)}/min</span></span>
-          </div>
-          <div class="bldg-tip-tenants">
-            <span class="bldg-tip-tenants-label">Cada:</span>
-            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(interval)}</span></span>
-          </div>
-          <div class="bldg-tip-tenants">
-            <span class="bldg-tip-tenants-label">Capacidad:</span>
-            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${cashHtml(cap)}</span></span>
-          </div>
-          <div class="bldg-tip-tenants">
-            <span class="bldg-tip-tenants-label">Radio:</span>
-            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(radio)}</span></span>
-          </div>
-          <div class="bldg-tip-tenants">
-            <span class="bldg-tip-tenants-label">Construcción:</span>
-            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
-          </div>
-          <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
-        `;
-      } else {
-        const reward = formatDuration(commerceRewardDurationMs(def));
-        const cycleCash = commerceCycleReward(def);
-        extra = `
-          <div class="bldg-tip-status">Ingresos por ciclo</div>
+      const reward = formatDuration(commerceRewardDurationMs(def));
+      const rate = commerceRentPerCustomer(def);
+      extra = `
+          <div class="bldg-tip-status">Cuota fija × clientes en el radio</div>
           <div class="bldg-tip-tenants">
             <span class="bldg-tip-tenants-label">Cobro cada:</span>
             <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(reward)}</span></span>
           </div>
           <div class="bldg-tip-tenants">
-            <span class="bldg-tip-tenants-label">Recompensa:</span>
-            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${cashHtml(cycleCash)}</span></span>
+            <span class="bldg-tip-tenants-label">Tarifa:</span>
+            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${cashHtml(rate)}/cliente</span></span>
           </div>
           <div class="bldg-tip-tenants">
             <span class="bldg-tip-tenants-label">Construcción:</span>
@@ -662,7 +664,6 @@ export class BuildingTooltip {
           </div>
           <div class="bldg-tip-footnote">Nivel ${escapeHtml(level)} · ${escapeHtml(size)}</div>
         `;
-      }
     } else {
       extra = `
         <div class="bldg-tip-tenants">
@@ -675,11 +676,11 @@ export class BuildingTooltip {
 
     const isCommercial = def.category === "commercial";
     const lootCommercial = isCommercial && usesLootEconomy(def);
-    const cycleCash = isCommercial && !lootCommercial ? commerceCycleReward(def) : 0;
+    const rate = isCommercial && !lootCommercial ? commerceRentPerCustomer(def) : 0;
     const cycleCashLabel = lootCommercial
       ? formatCash(getBuildingProductionPerMinute(def))
       : isCommercial
-        ? formatCash(cycleCash)
+        ? `${formatCash(rate)}/cliente`
         : "";
     const key = `cat|${name}|${cost}|${xp}|${buildLabel}|${cycleCashLabel}`;
     if (key === this._key) return;

@@ -8,10 +8,10 @@ import {
   houseMaxPeople,
   houseGrowthIntervalMs,
   computeHouseInfluence,
-  computeCommerceInfluence,
   commerceCycleReward,
   commerceCollectXp,
   commerceRewardDurationMs,
+  countCustomersInCommerceRadius,
   isConnectedToHQ,
   needsRoad,
   wonderGoldIntervalMs,
@@ -27,12 +27,12 @@ import {
   completeConstructionRuntime,
   usesLootEconomy,
   accrueHouseLoot,
-  countHousesInCommerceRadius,
   findContract,
   contractCost,
   contractIncome,
   contractDurationMs,
   contractCollectXp,
+  migrateBuildingRuntime,
 } from "./economy.js";
 
 /**
@@ -56,6 +56,7 @@ export class EconomySim {
     const now = Date.now();
     for (const b of this.grid.buildings) {
       if (!b.runtime) b.runtime = createRuntime(b.def);
+      else migrateBuildingRuntime(b.def, b.runtime);
       if (b.runtime.status === STATUS.BUILDING) continue;
       if (b.def.category === "house") {
         b.runtime.influence = computeHouseInfluence(b, this.grid.buildings);
@@ -74,15 +75,16 @@ export class EconomySim {
           }
           b.runtime.lastIncome = Math.floor(b.runtime.pendingLoot || 0);
         } else if (b.runtime.contractId != null) {
-          // Contract payout is flat — no decoration/wonder/commerce %.
           const contract = findContract(this.contracts, b.runtime.contractId);
-          b.runtime.lastIncome = contract ? contractIncome(contract, b.def) : 0;
+          b.runtime.lastIncome = contract
+            ? contractIncome(contract, b.def, b.runtime.influence)
+            : 0;
         } else if (b.runtime.status === STATUS.READY) {
           b.runtime.lastIncome = houseIncome(b.def, b.runtime.people, b.runtime.influence);
         }
       } else if (b.def.category === "commercial") {
-        b.runtime.influence = computeCommerceInfluence(b, this.grid.buildings);
-        b.runtime.houseCount = countHousesInCommerceRadius(b, this.grid.buildings);
+        b.runtime.influence = computeHouseInfluence(b, this.grid.buildings);
+        b.runtime.customers = countCustomersInCommerceRadius(b, this.grid.buildings);
         if (usesLootEconomy(b.def)) {
           if (b.runtime.pendingLoot == null) b.runtime.pendingLoot = 0;
           if (b.runtime.lastLootUpdate == null) b.runtime.lastLootUpdate = now;
@@ -94,7 +96,11 @@ export class EconomySim {
           }
           b.runtime.lastIncome = Math.floor(b.runtime.pendingLoot || 0);
         } else if (b.runtime.status === STATUS.READY) {
-          b.runtime.lastIncome = commerceCycleReward(b.def, b.runtime.influence);
+          b.runtime.lastIncome = commerceCycleReward(
+            b.def,
+            b.runtime.customers,
+            b.runtime.influence
+          );
         }
       }
     }
@@ -199,8 +205,9 @@ export class EconomySim {
     if (rt.remainingMs <= 0) {
       rt.remainingMs = 0;
       rt.status = STATUS.READY;
+      rt.influence = computeHouseInfluence(b, this.grid.buildings);
       const contract = findContract(this.contracts, rt.contractId);
-      rt.lastIncome = contract ? contractIncome(contract, b.def) : 0;
+      rt.lastIncome = contract ? contractIncome(contract, b.def, rt.influence) : 0;
       this.onEvent("rent_ready", { building: b, contract });
       dirty = true;
     }
@@ -233,8 +240,9 @@ export class EconomySim {
     if (rt.remainingMs <= 0) {
       rt.remainingMs = 0;
       rt.status = STATUS.READY;
-      rt.influence = computeCommerceInfluence(b, this.grid.buildings);
-      rt.lastIncome = commerceCycleReward(b.def, rt.influence);
+      rt.influence = computeHouseInfluence(b, this.grid.buildings);
+      rt.customers = countCustomersInCommerceRadius(b, this.grid.buildings);
+      rt.lastIncome = commerceCycleReward(b.def, rt.customers, rt.influence);
       this.onEvent("commerce_ready", { building: b });
       return true;
     }
@@ -284,7 +292,8 @@ export class EconomySim {
     rt.status = STATUS.WAITING;
     rt.durationMs = durationMs;
     rt.remainingMs = durationMs;
-    rt.lastIncome = contractIncome(contract, building.def);
+    rt.influence = computeHouseInfluence(building, this.grid.buildings);
+    rt.lastIncome = contractIncome(contract, building.def, rt.influence);
     rt.maxPeople = houseMaxPeople(building.def);
 
     this.onEvent("contract_signed", { building, contract, cost });
@@ -323,9 +332,10 @@ export class EconomySim {
 
     if (rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
+    rt.influence = computeHouseInfluence(building, this.grid.buildings);
     const contract = findContract(this.contracts, rt.contractId);
     const cash = contract
-      ? contractIncome(contract, building.def)
+      ? contractIncome(contract, building.def, rt.influence)
       : Math.max(0, Math.floor(Number(rt.lastIncome) || 0));
     if (cash <= 0) return { ok: false, reason: "not_ready" };
 
@@ -354,12 +364,15 @@ export class EconomySim {
   }
 
   /**
+   * @param {object} building
+   * @param {{ skipRecompute?: boolean }} [opts]
    * @returns {{ ok: boolean, cash?: number, xp?: number, reason?: string }}
    */
-  collectCommerce(building) {
+  collectCommerce(building, opts = {}) {
     if (building.def.category !== "commercial") return { ok: false, reason: "no_shop" };
     const rt = building.runtime;
     if (!rt) return { ok: false, reason: "not_ready" };
+    const skipRecompute = !!opts.skipRecompute;
 
     if (usesLootEconomy(building.def)) {
       accrueHouseLoot(building, this.grid.buildings, Date.now());
@@ -370,17 +383,18 @@ export class EconomySim {
       rt.lastLootUpdate = Date.now();
       rt.lastIncome = cash;
       rt.status = STATUS.WAITING;
-      rt.influence = computeCommerceInfluence(building, this.grid.buildings);
+      rt.customers = countCustomersInCommerceRadius(building, this.grid.buildings);
 
-      this.recomputeAll();
+      if (!skipRecompute) this.recomputeAll();
       this.onEvent("commerce_collected", { building, cash, xp: 0 });
       return { ok: true, cash, xp: 0 };
     }
 
     if (rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
-    rt.influence = computeCommerceInfluence(building, this.grid.buildings);
-    const cash = commerceCycleReward(building.def, rt.influence);
+    rt.influence = computeHouseInfluence(building, this.grid.buildings);
+    rt.customers = countCustomersInCommerceRadius(building, this.grid.buildings);
+    const cash = commerceCycleReward(building.def, rt.customers, rt.influence);
     const xp = commerceCollectXp(building.def, cash);
     const durationMs = commerceRewardDurationMs(building.def);
     rt.lastIncome = cash;
@@ -388,9 +402,40 @@ export class EconomySim {
     rt.durationMs = durationMs;
     rt.remainingMs = durationMs;
 
-    this.recomputeAll();
+    if (!skipRecompute) this.recomputeAll();
     this.onEvent("commerce_collected", { building, cash, xp });
     return { ok: true, cash, xp };
+  }
+
+  /**
+   * Collect every ready commerce (not houses/wonders).
+   * @param {(b: object) => boolean} [canCollect] optional gate (e.g. road to HQ)
+   * @returns {{ ok: boolean, cash: number, xp: number, collected: { building: object, cash: number, xp: number }[], reason?: string }}
+   */
+  collectAllReadyCommerce(canCollect = null) {
+    const collected = [];
+    let cash = 0;
+    let xp = 0;
+
+    for (const b of this.grid.buildings) {
+      if (b?.def?.category !== "commercial") continue;
+      if (typeof canCollect === "function" && !canCollect(b)) continue;
+      if (this.tapAction(b) !== "collect_commerce") continue;
+      const result = this.collectCommerce(b, { skipRecompute: true });
+      if (!result.ok) continue;
+      const entry = {
+        building: b,
+        cash: result.cash || 0,
+        xp: result.xp || 0,
+      };
+      collected.push(entry);
+      cash += entry.cash;
+      xp += entry.xp;
+    }
+
+    if (!collected.length) return { ok: false, cash: 0, xp: 0, collected, reason: "not_ready" };
+    this.recomputeAll();
+    return { ok: true, cash, xp, collected };
   }
 
   /**
@@ -408,16 +453,25 @@ export class EconomySim {
     let diamonds = 0;
     if (wonderGoldReady(rt, now)) {
       gold = wonderGoldReward(building.def);
-      rt.lastGold = gold;
-      rt.goldReadyAt = now + wonderGoldIntervalMs(building.def);
-      rt.goldNotified = false;
+      if (gold > 0) {
+        rt.lastGold = gold;
+        rt.goldReadyAt = now + wonderGoldIntervalMs(building.def);
+        rt.goldNotified = false;
+      } else {
+        rt.goldReadyAt = 0;
+      }
     }
     if (wonderDiamondReady(rt, now)) {
       diamonds = wonderDiamondReward(building.def);
-      rt.lastDiamond = diamonds;
-      rt.diamondReadyAt = now + wonderDiamondIntervalMs(building.def);
-      rt.diamondNotified = false;
+      if (diamonds > 0) {
+        rt.lastDiamond = diamonds;
+        rt.diamondReadyAt = now + wonderDiamondIntervalMs(building.def);
+        rt.diamondNotified = false;
+      } else {
+        rt.diamondReadyAt = 0;
+      }
     }
+    if (gold <= 0 && diamonds <= 0) return { ok: false, reason: "not_ready" };
 
     this.onEvent("wonder_collected", { building, gold, diamonds });
     return { ok: true, gold, diamonds };
@@ -437,8 +491,11 @@ export class EconomySim {
         if ((building.runtime.pendingLoot || 0) > 0) return "collect_rent";
         return "noop";
       }
+      // Contract houses: collect only when READY with a signed contract.
+      // Orphan READY/WAITING (e.g. pre-contract loot saves) → sign again.
+      if (building.runtime.contractId == null) return "sign_contract";
       if (st === STATUS.READY) return "collect_rent";
-      if (st === STATUS.IDLE || building.runtime.contractId == null) return "sign_contract";
+      if (st === STATUS.IDLE) return "sign_contract";
       return "noop";
     }
     if (cat === "commercial") {

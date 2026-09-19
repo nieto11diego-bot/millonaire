@@ -419,30 +419,6 @@
                           "gridSize":  "2x4",
                           "confidence":  "auto-resolved (dex-verified)"
                       },
-    "ANM_WONDERS_01B_4X5":  {
-                                "anm":  "ANM_WONDERS_01B_4X5",
-                                "pack":  "r1",
-                                "descriptor_index":  162,
-                                "sprite_index":  698,
-                                "sprite_file":  "resources/r1_0698.png",
-                                "width":  167,
-                                "height":  166,
-                                "category":  "wonder",
-                                "gridSize":  "4x5",
-                                "confidence":  "auto-resolved (dex-verified)"
-                            },
-    "ANM_WONDERS_02B_4X5":  {
-                                "anm":  "ANM_WONDERS_02B_4X5",
-                                "pack":  "r1",
-                                "descriptor_index":  135,
-                                "sprite_index":  671,
-                                "sprite_file":  "resources/r1_0671.png",
-                                "width":  170,
-                                "height":  154,
-                                "category":  "wonder",
-                                "gridSize":  "4x5",
-                                "confidence":  "auto-resolved (dex-verified)"
-                            },
     "ANM_WONDERS_03B_4X4":  {
                                 "anm":  "ANM_WONDERS_03B_4X4",
                                 "pack":  "r1",

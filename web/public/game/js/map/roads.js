@@ -19,7 +19,7 @@ export class RoadLayer {
     this.config = config;
     /** @type {boolean[]} */
     this.cells = new Array(cols * rows).fill(false);
-    /** @type {(null|"road"|"zebra")[]} */
+    /** @type {(null|"road"|"zebra"|"path")[]} */
     this.kinds = new Array(cols * rows).fill(null);
     /** @type {Map<string, HTMLImageElement>} */
     this.images = new Map();
@@ -46,7 +46,8 @@ export class RoadLayer {
     if (!this.inBounds(tx, ty)) return false;
     const i = this.index(tx, ty);
     if (value) {
-      const nextKind = kind === "zebra" ? "zebra" : "road";
+      const nextKind =
+        kind === "zebra" ? "zebra" : kind === "path" ? "path" : "road";
       if (this.cells[i] && this.kinds[i] === nextKind) return false;
       this.cells[i] = true;
       this.kinds[i] = nextKind;
@@ -84,6 +85,9 @@ export class RoadLayer {
     if (kind === "zebra" && this.config.zebra) {
       return this.config.spritesPath + this.config.zebra;
     }
+    if (kind === "path" && this.config.path) {
+      return this.config.spritesPath + this.config.path;
+    }
     return this.config.spritesPath + this.fileForMask(this.maskAt(tx, ty));
   }
 
@@ -94,6 +98,7 @@ export class RoadLayer {
       c.straightEW,
       c.cross,
       c.zebra,
+      c.path,
       ...Object.values(c.curves || {}),
       ...Object.values(c.tees || {}),
     ].filter(Boolean);
@@ -119,7 +124,7 @@ export class RoadLayer {
    * @param {number} ty
    * @param {boolean} place
    * @param {(tx:number,ty:number)=>boolean} [blocked]
-   * @param {"road"|"zebra"} [kind]
+   * @param {"road"|"zebra"|"path"} [kind]
    */
   paint(tx, ty, place, blocked, kind = "road") {
     if (!this.inBounds(tx, ty)) return false;

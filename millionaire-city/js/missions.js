@@ -2,7 +2,7 @@
  * Mission progress tracker — ports MissionScreen / MissionObject from the original game.
  */
 
-import { cityPopulation } from "./economy.js";
+import { cityPopulation, countCustomersInCommerceRadius } from "./economy.js";
 
 export const STATE = {
   OPEN: "open",
@@ -13,31 +13,101 @@ export const STATE = {
 
 /** objectId → mission sku(s) to improve when that building is bought (MissionScreen.buildingBought). */
 const BUILD_TRIGGERS = {
-  2: [7],
-  3: [13],
-  5: [14],
-  13: [16],
-  15: [15],
-  17: [2],
-  18: [8],
+  // Houses
+  1: [50], // bungalow luxury
+  2: [7], // townhouse
+  3: [13], // townhouse luxury
+  4: [51], // duplex
+  5: [14], // duplex luxury
+  6: [53], // three story
+  7: [54], // three story luxury
+  8: [55], // apartment
+  9: [56], // apartment luxury
+  10: [57], // villa
+  11: [58], // loft
+  12: [59], // villa luxury
+  13: [16], // skyscraper (x3)
+  14: [61], // loft luxury
+  15: [15], // chateau
+  16: [64], // skyscraper luxury
+  155: [52], // hacienda
+  201: [65], // blue sail
+  206: [63], // financial tower
+  207: [66], // petronas
+  229: [60], // curved residences
+  230: [62], // amber tower
+  // Commerces
+  17: [2], // pizzeria
+  18: [8], // coffee
+  19: [70], // flower
+  20: [76], // bowling
+  21: [77], // jewellery
+  22: [78], // nightclub
+  23: [79], // mall
+  24: [80], // bank
+  25: [81], // hospital
+  26: [82], // casino
+  154: [72], // taco
+  159: [74], // ice cream
+  224: [84], // camp nou
+  225: [84], // bernabeu
+  231: [83], // fire station
+  // Decorations (trees share Green Thumb)
   27: [10],
   28: [10],
   29: [10],
   31: [10],
   32: [10],
-  30: [11],
-  33: [12],
+  210: [10],
+  226: [10],
+  228: [10],
+  30: [11], // fountain
+  208: [11, 92], // park fountain counts for fountain dream + own mission
+  33: [12], // big garden
+  151: [90], // pond
+  153: [10], // mariachi counts as decoration build for green thumb? better own - skip trees
+  158: [93], // lemonade
+  209: [91], // cruise
+  227: [10], // balloon boy as tree-like decor for green thumb
+  // Wonders (any wonder advances "build a wonder")
   34: [17],
   35: [17],
   36: [17],
   152: [17],
+  200: [17],
+  202: [17],
+  203: [17],
+  204: [17],
+  205: [17],
+  211: [17],
+  212: [17],
+  213: [17],
+  214: [17],
+  215: [17],
 };
 
-const WONDER_UNIQUE_IDS = new Set([34, 35, 36, 152]);
-const WONDER_UNIQUE_TARGET = 3;
+const WONDER_UNIQUE_IDS = new Set([
+  34, 35, 36, 152, 200, 202, 203, 204, 205, 211, 212, 213, 214, 215,
+]);
+const WONDER_UNIQUE_TARGET = 14;
 
 /** Cash / company-value style missions (amount counter flips to 1 when condition met). */
 const VALUE_SKUS = new Set([37, 35, 38, 39, 40]);
+
+/** Commerce objectId → collect mission sku(s). */
+const COMMERCE_COLLECT = {
+  17: [28],
+  18: [29],
+  19: [71],
+  154: [73],
+  159: [75],
+};
+
+/** Commerce objectId → customer mission skus (condition = people in radius). */
+const COMMERCE_CUSTOMERS = {
+  17: [18, 19, 20],
+  18: [21],
+};
 
 export class MissionTracker {
   /**
@@ -230,6 +300,15 @@ export class MissionTracker {
   }
 
   /**
+   * People living in finished houses inside a commerce's influence radius.
+   * @param {object} shop
+   * @param {object[]} buildings
+   */
+  _customersNearCommerce(shop, buildings) {
+    return countCustomersInCommerceRadius(shop, buildings);
+  }
+
+  /**
    * Re-evaluate cash / company-value / house-bonus missions.
    * @param {number} cash
    * @param {number} companyValue
@@ -253,7 +332,7 @@ export class MissionTracker {
   }
 
   /**
-   * House-bonus + population missions (condition holds the real threshold).
+   * House-bonus + population + commerce-customer missions.
    * @param {{ buildings: object[] }} grid
    */
   syncEconomyMissions(grid) {
@@ -285,6 +364,35 @@ export class MissionTracker {
       const need = m.target?.condition || m.target?.amount || 0;
       if (need > 0 && population >= need) this.improve(sku);
     }
+
+    // Commerce "customers" = residents in the shop influence radius
+    for (const [objectId, skus] of Object.entries(COMMERCE_CUSTOMERS)) {
+      const oid = Number(objectId);
+      let best = 0;
+      for (const b of grid.buildings) {
+        if (b.def?.objectId !== oid) continue;
+        best = Math.max(best, this._customersNearCommerce(b, grid.buildings));
+      }
+      for (const sku of skus) {
+        const m = this.bySku.get(sku);
+        if (!m || this.isCompleted(sku) || !this.isUnlocked(sku)) continue;
+        const need = m.target?.condition ?? 0;
+        if (need > 0 && best >= need) this.improve(sku);
+      }
+    }
+
+    // All-wonders mission: sync from unique set size / owned unique count
+    if (!this.isCompleted(36) && this.isUnlocked(36)) {
+      const owned = new Set();
+      for (const b of grid.buildings) {
+        const oid = b.def?.objectId;
+        if (oid != null && WONDER_UNIQUE_IDS.has(oid)) owned.add(oid);
+      }
+      for (const oid of owned) {
+        if (!this.uniqueWonders.includes(oid)) this.uniqueWonders.push(oid);
+      }
+      if (owned.size >= WONDER_UNIQUE_TARGET) this.improve(36);
+    }
   }
 
   onRentCollected() {
@@ -295,8 +403,9 @@ export class MissionTracker {
   }
 
   onCommerceCollected(objectId) {
-    if (objectId === 17) this.improve(28); // pizzeria
-    if (objectId === 18) this.improve(29); // coffee
+    const skus = COMMERCE_COLLECT[objectId];
+    if (!skus) return;
+    for (const sku of skus) this.improve(sku);
   }
 
   /**
@@ -352,7 +461,9 @@ function isTrackableNow(m) {
     metric === "population_total" ||
     metric === "rents_collected" ||
     metric === "commerce_collects" ||
-    metric === "house_bonus_percent"
+    metric === "house_bonus_percent" ||
+    metric === "customers" ||
+    metric === "instant_builds"
   ) {
     return true;
   }

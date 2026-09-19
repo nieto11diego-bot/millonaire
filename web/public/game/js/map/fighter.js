@@ -4,12 +4,14 @@
  * Formation (facing flight direction / across the screen):
  *   1 izquierda | 2 centro-izq | 3 centro | 4 centro-der | 5 derecha
  *
- * All five spawn synchronized (same X). Along the pass, pairs cross twice:
- *   2↔4 and 1↔5 trade lanes, then trade back (3 stays center).
+ * All five spawn synchronized (same X). Mid-pass, pairs cross once:
+ *   2↔4 and 1↔5 trade lanes (3 stays center) and keep the new order.
  */
 
 const TRAIL_MAX = 96;
 const TRAIL_SAMPLE_MS = 18;
+/** Extra spacing vs original formation (15% then +30%). */
+const SEP_SCALE = 1.15 * 1.3;
 
 /**
  * Lateral lane multipliers for planes 1→5 (left → right).
@@ -60,10 +62,10 @@ export class FighterPair {
 
     /** 1 = right, -1 = left */
     this.dir = 1;
-    this.speed = 330;
+    this.speed = 165;
     this.baseY = 0;
-    /** Pixels between adjacent lanes */
-    this.sep = 97.5;
+    /** Pixels between adjacent lanes (overwritten each spawn) */
+    this.sep = (72 + 8) * 1.25 * SEP_SCALE;
 
     /** Map X span for this pass (progress-driven double swap) */
     this._spawnX = 0;
@@ -104,12 +106,12 @@ export class FighterPair {
     return this.grid.rows * this.grid.tile;
   }
 
-  /** All five enter together; 2↔4 and 1↔5 cross twice along the path. */
+  /** All five enter together; 2↔4 and 1↔5 cross once along the path. */
   spawn() {
     const margin = this.drawW + 220;
     this.dir = Math.random() < 0.5 ? 1 : -1;
-    this.speed = (95 + Math.random() * 35) * 3;
-    this.sep = (72 + Math.random() * 16) * 1.25;
+    this.speed = (95 + Math.random() * 35) * 1.5 * 1.5 * 1.25;
+    this.sep = (72 + Math.random() * 16) * 1.25 * SEP_SCALE;
 
     const half = this.sep * 2.1;
     const pad = this.drawH + half + 40;
@@ -154,18 +156,16 @@ export class FighterPair {
   }
 
   /**
-   * Two full lane exchanges along the path.
-   * Returns blend: +1 = home lanes, -1 = swapped lanes.
-   * Crosses near ~28% and ~68% of the map.
+   * One lane exchange mid-path.
+   * Returns blend: +1 = home lanes, -1 = swapped lanes (held until exit).
    * @param {number} progress
    */
   _swapBlend(progress) {
-    const p0 = 0.16;
-    const p1 = 0.82;
+    const p0 = 0.28;
+    const p1 = 0.48;
     if (progress <= p0) return 1;
-    if (progress >= p1) return 1;
-    // Map [p0,p1] → [0, 2] so cos covers home→swap→home
-    const phase = ((progress - p0) / (p1 - p0)) * 2;
+    if (progress >= p1) return -1;
+    const phase = (progress - p0) / (p1 - p0);
     return Math.cos(phase * Math.PI);
   }
 
@@ -182,12 +182,12 @@ export class FighterPair {
     const dt = dtMs / 1000;
     const progress = this._mapProgress();
     const blend = this._swapBlend(progress);
-    const p0 = 0.16;
-    const p1 = 0.82;
+    const p0 = 0.28;
+    const p1 = 0.48;
     let passLeadWave = 0;
     if (progress > p0 && progress < p1) {
-      const phase = ((progress - p0) / (p1 - p0)) * 2;
-      passLeadWave = Math.abs(Math.sin(phase * Math.PI));
+      const phase = (progress - p0) / (p1 - p0);
+      passLeadWave = Math.sin(phase * Math.PI);
     }
 
     // One shared X so every plane keeps identical speed

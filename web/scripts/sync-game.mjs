@@ -6,7 +6,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(__dirname, "..");
 const src = path.resolve(webRoot, "../millionaire-city");
 const dest = path.resolve(webRoot, "public/game");
-const exclude = new Set(["tools", "_tmp_sharp", "_ck", "node_modules", ".git"]);
+const exclude = new Set([
+  "tools",
+  "_tmp_sharp",
+  "_tmp_ffmpeg",
+  "_tmp_img",
+  "_ck",
+  "node_modules",
+  ".git",
+]);
 
 if (!existsSync(src)) {
   if (existsSync(dest)) {

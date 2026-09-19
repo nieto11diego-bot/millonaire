@@ -18,9 +18,22 @@ export class FloatingRewards {
    */
   spawn(building, tile, { cash, xp = 0 }) {
     const { drawY: spriteTop } = spriteOrigin(building.def, building.tx, building.ty, tile);
+    this.spawnAt(
+      (building.tx + building.def.gridW / 2) * tile,
+      spriteTop - 10,
+      { cash, xp }
+    );
+  }
+
+  /**
+   * @param {number} wx
+   * @param {number} wy
+   * @param {{ cash?: number, xp?: number }} rewards
+   */
+  spawnAt(wx, wy, { cash = 0, xp = 0 }) {
     this.items.push({
-      wx: (building.tx + building.def.gridW / 2) * tile,
-      wy: spriteTop - 10,
+      wx,
+      wy,
       cash: Math.max(0, Math.round(cash)),
       xp: Math.max(0, Math.round(xp)),
       age: 0,
