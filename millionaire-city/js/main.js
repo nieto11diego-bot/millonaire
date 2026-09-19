@@ -794,7 +794,7 @@ async function main() {
     btnShop.setAttribute("aria-pressed", open ? "true" : "false");
     btnShop.classList.toggle("active", open);
   }
-  setShopOpen(true);
+  setShopOpen(false);
 
   const shop = new ShopUI(
     shopEl,

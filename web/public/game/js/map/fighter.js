@@ -1,13 +1,39 @@
 /**
- * Pair of combat jets that cross the map like the zeppelin,
- * swap lanes along the pass, and leave a faint exhaust trail.
+ * Millionaire City–style promo flyover.
+ *
+ * Formation (facing flight direction / across the screen):
+ *   1 izquierda | 2 centro-izq | 3 centro | 4 centro-der | 5 derecha
+ *
+ * All five spawn synchronized (same X). Along the pass, pairs cross twice:
+ *   2↔4 and 1↔5 trade lanes, then trade back (3 stays center).
  */
 
-const TRAIL_MAX = 56;
-const TRAIL_SAMPLE_MS = 22;
+const TRAIL_MAX = 96;
+const TRAIL_SAMPLE_MS = 18;
+
+/**
+ * Lateral lane multipliers for planes 1→5 (left → right).
+ * Screen Y: left of formation = toward top when flying right.
+ */
+const LANE_Y = [-2, -1, 0, 1, 2];
+
+/** 1-based plane pairs that trade lanes mid-pass */
+const SWAP_PAIRS = [
+  [2, 4],
+  [1, 5],
+];
 
 /**
  * @typedef {{ x: number, y: number, a: number, life: number }} TrailPoint
+ * @typedef {{
+ *   x: number,
+ *   y: number,
+ *   laneY: number,
+ *   homeLane: number,
+ *   swapLane: number,
+ *   angle: number,
+ *   trail: TrailPoint[],
+ * }} Jet
  */
 
 export class FighterPair {
@@ -18,6 +44,7 @@ export class FighterPair {
    *   drawW?: number,
    *   drawH?: number,
    *   initialDelayMs?: number,
+   *   count?: number,
    * }} [options]
    */
   constructor(grid, options = {}) {
@@ -25,43 +52,36 @@ export class FighterPair {
     this.spriteUrl = options.spriteUrl || "assets/fx/fighter_jet.png";
     /** @type {HTMLImageElement|null} */
     this.img = null;
-    this.drawW = options.drawW ?? 132.5;
-    this.drawH = options.drawH ?? 123.3;
+    this.drawW = options.drawW ?? 118;
+    this.drawH = options.drawH ?? 110;
+    this.count = Math.max(2, Math.min(LANE_Y.length, options.count ?? LANE_Y.length));
     this.active = false;
     this.waitMs = options.initialDelayMs ?? 2200;
 
-    /** Shared flight direction: 1 = right, -1 = left */
+    /** 1 = right, -1 = left */
     this.dir = 1;
-    /** Base path progress along X (nose of the pair) */
-    this.x = 0;
-    this.baseY = 0;
     this.speed = 330;
+    this.baseY = 0;
+    /** Pixels between adjacent lanes */
+    this.sep = 97.5;
 
-    /** Lateral half-separation between the two jets (screen Y) */
-    this.sep = 48;
-    /** First appearance starts stacked; later runs start already separated */
-    this.firstSpawn = true;
-    this.sepAnim = 0;
-
-    /** How many lane swaps during the mid stretch of each pass */
-    this.swapCount = 2;
-    /** Map-progress window where swaps happen (0..1) */
-    this.swapT0 = 0.18;
-    this.swapT1 = 0.82;
-
-    /** Spawn X used to measure progress across the map */
+    /** Map X span for this pass (progress-driven double swap) */
     this._spawnX = 0;
     this._exitX = 0;
+    /** Shared formation X — all jets lock to this each frame */
+    this._formX = 0;
 
-    /** @type {[{ trail: TrailPoint[] }, { trail: TrailPoint[] }]} */
-    this.jets = [{ trail: [] }, { trail: [] }];
+    /** @type {Jet[]} */
+    this.jets = Array.from({ length: this.count }, () => ({
+      x: 0,
+      y: 0,
+      laneY: 0,
+      homeLane: 0,
+      swapLane: 0,
+      angle: 0,
+      trail: [],
+    }));
     this._trailAcc = 0;
-
-    /** Cached draw poses for this frame */
-    this._pose = [
-      { x: 0, y: 0, angle: 0 },
-      { x: 0, y: 0, angle: 0 },
-    ];
   }
 
   async preload() {
@@ -84,64 +104,69 @@ export class FighterPair {
     return this.grid.rows * this.grid.tile;
   }
 
-  /** Pick a shared random entry point for this pass. */
+  /** All five enter together; 2↔4 and 1↔5 cross twice along the path. */
   spawn() {
-    const margin = this.drawW + 140;
+    const margin = this.drawW + 220;
     this.dir = Math.random() < 0.5 ? 1 : -1;
-    const padY = 70;
-    const maxY = Math.max(padY + 40, this.mapH - this.drawH - 80);
-    this.baseY = padY + Math.random() * (maxY - padY);
-    this._spawnX = this.dir > 0 ? -margin : this.mapW + margin;
+    this.speed = (95 + Math.random() * 35) * 3;
+    this.sep = (72 + Math.random() * 16) * 1.25;
+
+    const half = this.sep * 2.1;
+    const pad = this.drawH + half + 40;
+    this.baseY = pad + Math.random() * Math.max(60, this.mapH - pad * 2);
+
+    // Synchronized: same X for every plane
+    const spawnX = this.dir > 0 ? -margin : this.mapW + margin;
+    this._spawnX = spawnX;
     this._exitX = this.dir > 0 ? this.mapW + margin : -margin;
-    this.x = this._spawnX;
-    this.speed = (95 + Math.random() * 45) * 3;
-    this.sep = 95 + Math.random() * 35;
-    this.swapCount = 2;
-    this.swapT0 = 0.16 + Math.random() * 0.06;
-    this.swapT1 = 0.78 + Math.random() * 0.08;
-    // First time: same point then peel apart; later: already laterally separated
-    this.sepAnim = this.firstSpawn ? 0 : 1;
-    this.firstSpawn = false;
-    this.jets[0].trail = [];
-    this.jets[1].trail = [];
+    this._formX = spawnX;
+
+    /** @type {Map<number, number>} */
+    const swapTo = new Map();
+    for (const [a, b] of SWAP_PAIRS) {
+      swapTo.set(a - 1, b - 1);
+      swapTo.set(b - 1, a - 1);
+    }
+
+    for (let i = 0; i < this.count; i++) {
+      const jet = this.jets[i];
+      jet.homeLane = LANE_Y[i];
+      const partner = swapTo.get(i);
+      jet.swapLane = partner != null ? LANE_Y[partner] : jet.homeLane;
+
+      jet.laneY = jet.homeLane;
+      jet.x = spawnX;
+      jet.y = this.baseY + jet.laneY * this.sep;
+      jet.angle = 0;
+      jet.trail = [];
+    }
+
     this._trailAcc = 0;
     this.active = true;
     this.waitMs = 0;
   }
 
-  /** 0..1 progress from spawn X to exit X. */
-  _progress() {
+  /** 0..1 progress across the map for this pass. */
+  _mapProgress() {
     const span = this._exitX - this._spawnX;
     if (!span) return 0;
-    return Math.max(0, Math.min(1, (this.x - this._spawnX) / span));
+    return Math.max(0, Math.min(1, (this._formX - this._spawnX) / span));
   }
 
   /**
-   * Lane blend: +1 = initial lanes, 0 = crossing, -1 = swapped (and so on).
+   * Two full lane exchanges along the path.
+   * Returns blend: +1 = home lanes, -1 = swapped lanes.
+   * Crosses near ~28% and ~68% of the map.
    * @param {number} progress
    */
-  _laneBlend(progress) {
-    const t0 = this.swapT0;
-    const t1 = this.swapT1;
-    const n = this.swapCount;
-    let phase = 0;
-    if (progress <= t0) phase = 0;
-    else if (progress >= t1) phase = n;
-    else phase = ((progress - t0) / (t1 - t0)) * n;
-    // cos(kπ): +1 → -1 → +1 … for each completed swap
+  _swapBlend(progress) {
+    const p0 = 0.16;
+    const p1 = 0.82;
+    if (progress <= p0) return 1;
+    if (progress >= p1) return 1;
+    // Map [p0,p1] → [0, 2] so cos covers home→swap→home
+    const phase = ((progress - p0) / (p1 - p0)) * 2;
     return Math.cos(phase * Math.PI);
-  }
-
-  /**
-   * Soft ease for first-spawn lateral peel-apart.
-   * @param {number} dtMs
-   */
-  _updateSep(dtMs) {
-    if (this.sepAnim >= 1) {
-      this.sepAnim = 1;
-      return;
-    }
-    this.sepAnim = Math.min(1, this.sepAnim + dtMs / 1400);
   }
 
   /**
@@ -154,77 +179,81 @@ export class FighterPair {
       return;
     }
 
-    this._updateSep(dtMs);
-    this.x += this.dir * this.speed * (dtMs / 1000);
-
-    const sepNow = this.sep * this._easeOutCubic(this.sepAnim);
-    const progress = this._progress();
-    const lane = this._laneBlend(progress);
-    // Peak stagger / bank in the middle of each swap
-    const t0 = this.swapT0;
-    const t1 = this.swapT1;
-    const n = this.swapCount;
-    let swapWave = 0;
-    if (progress > t0 && progress < t1) {
-      const phase = ((progress - t0) / (t1 - t0)) * n;
-      swapWave = Math.sin(phase * Math.PI);
+    const dt = dtMs / 1000;
+    const progress = this._mapProgress();
+    const blend = this._swapBlend(progress);
+    const p0 = 0.16;
+    const p1 = 0.82;
+    let passLeadWave = 0;
+    if (progress > p0 && progress < p1) {
+      const phase = ((progress - p0) / (p1 - p0)) * 2;
+      passLeadWave = Math.abs(Math.sin(phase * Math.PI));
     }
 
-    for (let i = 0; i < 2; i++) {
-      const sign = i === 0 ? 1 : -1;
-      const ox = -sign * swapWave * 26 * this.dir;
-      const bank = -sign * swapWave * 0.32 * this.dir;
-      this._pose[i].x = this.x + ox;
-      this._pose[i].y = this.baseY + sign * sepNow * lane;
-      this._pose[i].angle = bank;
+    // One shared X so every plane keeps identical speed
+    this._formX += this.dir * this.speed * dt;
+
+    /** @type {Set<number>} */
+    const swapping = new Set();
+    for (const [a, b] of SWAP_PAIRS) {
+      swapping.add(a - 1);
+      swapping.add(b - 1);
+    }
+
+    for (let i = 0; i < this.count; i++) {
+      const jet = this.jets[i];
+      // blend +1 = home, -1 = partner lane
+      const mid = (jet.homeLane + jet.swapLane) * 0.5;
+      const half = (jet.homeLane - jet.swapLane) * 0.5;
+      jet.laneY = mid + half * blend;
+      jet.y = this.baseY + jet.laneY * this.sep;
+      jet.x = this._formX;
+
+      if (swapping.has(i)) {
+        const dy = jet.swapLane - jet.homeLane;
+        jet.angle = dy * passLeadWave * 0.14;
+      } else {
+        jet.angle = 0;
+      }
     }
 
     this._updateTrails(dtMs);
 
-    const margin = this.drawW + 200;
+    const margin = this.drawW + 320;
     const gone =
-      (this.dir > 0 && this.x > this.mapW + margin) || (this.dir < 0 && this.x < -margin);
+      (this.dir > 0 && this._formX > this.mapW + margin) ||
+      (this.dir < 0 && this._formX < -margin);
     if (gone) {
       this.active = false;
       this.waitMs = 5000 + Math.random() * 9000;
-      this.jets[0].trail = [];
-      this.jets[1].trail = [];
+      for (const jet of this.jets) jet.trail = [];
     }
   }
 
-  /** @param {number} x */
-  _easeOutCubic(x) {
-    return 1 - Math.pow(1 - x, 3);
-  }
-
   /**
-   * Sample faint exhaust points behind each jet.
    * @param {number} dtMs
    */
   _updateTrails(dtMs) {
     this._trailAcc += dtMs;
     while (this._trailAcc >= TRAIL_SAMPLE_MS) {
       this._trailAcc -= TRAIL_SAMPLE_MS;
-      for (let i = 0; i < 2; i++) {
-        const p = this._pose[i];
-        // Exhaust exits rear of fuselage (sprite: nose left, engine right)
+      for (let i = 0; i < this.count; i++) {
+        const jet = this.jets[i];
         const rear = this.drawW * 0.42;
-        const ex = p.x - Math.cos(p.angle) * this.dir * rear;
-        const ey = p.y + this.drawH * 0.5 - Math.sin(p.angle) * rear * 0.25;
-        const trail = this.jets[i].trail;
-        trail.push({ x: ex, y: ey, a: 0.72, life: 1 });
-        if (trail.length > TRAIL_MAX) trail.shift();
+        const ex = jet.x - this.dir * Math.cos(jet.angle) * rear;
+        const ey = jet.y + this.drawH * 0.5 - Math.sin(jet.angle) * rear * 0.35;
+        jet.trail.push({ x: ex, y: ey, a: 0.85, life: 1 });
+        if (jet.trail.length > TRAIL_MAX) jet.trail.shift();
       }
     }
 
     for (const jet of this.jets) {
       for (let i = jet.trail.length - 1; i >= 0; i--) {
         const pt = jet.trail[i];
-        pt.life -= dtMs / 1100;
-        pt.a = Math.max(0, pt.life * 0.7);
-        // Drift slightly opposite to flight + soft rise
-        pt.x -= this.dir * 12 * (dtMs / 1000);
-        pt.y -= 6 * (dtMs / 1000);
+        pt.life -= dtMs / 1500;
+        pt.a = Math.max(0, pt.life * 0.82);
+        pt.x -= this.dir * 10 * (dtMs / 1000);
+        pt.y -= 3 * (dtMs / 1000);
         if (pt.life <= 0) jet.trail.splice(i, 1);
       }
     }
@@ -237,11 +266,13 @@ export class FighterPair {
     if (!this.active && this.jets.every((j) => j.trail.length === 0)) return;
 
     this._drawTrails(ctx);
-
     if (!this.active) return;
 
-    for (let i = 0; i < 2; i++) {
-      this._drawJet(ctx, this._pose[i]);
+    const order = this.jets
+      .map((_j, i) => i)
+      .sort((a, b) => this.jets[a].y - this.jets[b].y);
+    for (const i of order) {
+      this._drawJet(ctx, this.jets[i]);
     }
   }
 
@@ -251,14 +282,29 @@ export class FighterPair {
   _drawTrails(ctx) {
     ctx.save();
     for (const jet of this.jets) {
+      if (jet.trail.length >= 2) {
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        for (let i = 1; i < jet.trail.length; i++) {
+          const a = jet.trail[i - 1];
+          const b = jet.trail[i];
+          const life = (a.life + b.life) * 0.5;
+          if (life <= 0.02) continue;
+          ctx.strokeStyle = `rgba(245,250,255,${life * 0.55})`;
+          ctx.lineWidth = 3.2 + (1 - life) * 7;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
       for (const pt of jet.trail) {
         if (pt.a <= 0.02) continue;
-        const r = 4.2 + (1 - pt.life) * 6.5;
+        const r = 5.2 + (1 - pt.life) * 8.5;
         const g = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, r);
-        g.addColorStop(0, `rgba(245,250,255,${pt.a * 0.95})`);
-        g.addColorStop(0.35, `rgba(200,220,240,${pt.a * 0.65})`);
-        g.addColorStop(0.7, `rgba(160,185,210,${pt.a * 0.28})`);
-        g.addColorStop(1, `rgba(140,160,180,0)`);
+        g.addColorStop(0, `rgba(255,255,255,${pt.a * 0.9})`);
+        g.addColorStop(0.4, `rgba(220,235,250,${pt.a * 0.55})`);
+        g.addColorStop(1, `rgba(180,200,220,0)`);
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
@@ -270,21 +316,20 @@ export class FighterPair {
 
   /**
    * @param {CanvasRenderingContext2D} ctx
-   * @param {{ x: number, y: number, angle: number }} pose
+   * @param {Jet} jet
    */
-  _drawJet(ctx, pose) {
+  _drawJet(ctx, jet) {
     const w = this.drawW;
     const h = this.drawH;
     const facingRight = this.dir > 0;
 
     ctx.save();
-    ctx.translate(pose.x, pose.y + h * 0.5);
-    ctx.rotate(pose.angle);
+    ctx.translate(jet.x, jet.y + h * 0.5);
+    ctx.rotate(facingRight ? jet.angle : -jet.angle);
 
     if (this.img) {
       ctx.save();
       if (facingRight) {
-        // Sprite faces left by default (same as zeppelin)
         ctx.scale(-1, 1);
         ctx.drawImage(this.img, -w / 2, -h / 2, w, h);
       } else {

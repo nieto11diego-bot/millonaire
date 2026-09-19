@@ -139,8 +139,8 @@
             "name": "Tourists",
             "nameKey": "tourists",
             "durationSec": 180,
-            "costBase": 100,
-            "incomeBase": 430
+            "costBase": 150,
+            "incomeBase": 800
         },
         {
             "id": 1,
@@ -148,47 +148,47 @@
             "nameKey": "students",
             "durationSec": 1800,
             "costBase": 500,
-            "incomeBase": 5100
+            "incomeBase": 6300
         },
         {
             "id": 2,
             "name": "Familia",
             "nameKey": "family",
             "durationSec": 3600,
-            "costBase": 1100,
-            "incomeBase": 10900
+            "costBase": 1200,
+            "incomeBase": 11300
         },
         {
             "id": 3,
             "name": "Modelos",
             "nameKey": "models",
             "durationSec": 7200,
-            "costBase": 1800,
-            "incomeBase": 22600
+            "costBase": 1600,
+            "incomeBase": 24700
         },
         {
             "id": 4,
             "name": "Artistas",
             "nameKey": "artists",
             "durationSec": 21600,
-            "costBase": 2300,
-            "incomeBase": 42000
+            "costBase": 2500,
+            "incomeBase": 68000
         },
         {
             "id": 5,
             "name": "Pilotos",
             "nameKey": "pilots",
             "durationSec": 43200,
-            "costBase": 2800,
-            "incomeBase": 65000
+            "costBase": 7500,
+            "incomeBase": 118000
         },
         {
             "id": 6,
             "name": "Empresarios",
             "nameKey": "entrepreneur",
             "durationSec": 86400,
-            "costBase": 3500,
-            "incomeBase": 86000
+            "costBase": 12000,
+            "incomeBase": 192000
         }
     ],
     "houses": [
