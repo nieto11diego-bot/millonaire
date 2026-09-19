@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 36" fill="none">
+  <!-- Document body -->
+  <path d="M6 2h14l8 8v22a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="#FFF8E8" stroke="#1A4A72" stroke-width="1.6"/>
+  <path d="M20 2v7a1 1 0 0 0 1 1h7" fill="#FFE08A" stroke="#1A4A72" stroke-width="1.4" stroke-linejoin="round"/>
+  <!-- Lines -->
+  <rect x="8" y="14" width="12" height="2.2" rx="1" fill="#3DB89A"/>
+  <rect x="8" y="19" width="16" height="2.2" rx="1" fill="#5BC4E8"/>
+  <rect x="8" y="24" width="10" height="2.2" rx="1" fill="#5BC4E8"/>
+  <!-- Gold seal -->
+  <circle cx="22" cy="28" r="5.2" fill="#FFD24A" stroke="#C88810" stroke-width="1.2"/>
+  <circle cx="22" cy="28" r="2.4" fill="#FFF6C8"/>
+  <!-- Pen accent -->
+  <path d="M4 30l6-6 2.2 2.2-6 6H4v-2.2z" fill="#FF4D6D" stroke="#1A4A72" stroke-width="0.9" stroke-linejoin="round"/>
+</svg>

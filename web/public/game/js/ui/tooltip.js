@@ -8,7 +8,9 @@ import {
   houseIncome,
   houseCollectXp,
   houseMaxPeople,
-  houseRewardDurationMs,
+  findContract,
+  contractIncome,
+  houseContractBonusPercent,
   commerceCycleReward,
   commerceCollectXp,
   commerceRewardDurationMs,
@@ -31,7 +33,6 @@ import {
   getBuildingFinalProduction,
   maxLootOf,
   effectiveMaxLoot,
-  commerceHouseBonusPercent,
 } from "../economy.js";
 import {
   CASH_ICON,
@@ -59,6 +60,7 @@ export class BuildingTooltip {
    *   t?: (tid: number, fb: string) => string,
    *   onInstantBuild?: (building: object) => void,
    *   isRoadOk?: (building: object) => boolean,
+   *   getContract?: (id: number|null|undefined) => object|null,
    * }} [options]
    */
   constructor(root, options = {}) {
@@ -66,6 +68,7 @@ export class BuildingTooltip {
     this.t = options.t || ((_tid, fb) => fb);
     this.onInstantBuild = options.onInstantBuild || null;
     this.isRoadOk = options.isRoadOk || (() => true);
+    this.getContract = options.getContract || (() => null);
     this.building = null;
     /** @type {object|null} catalog def preview */
     this.catalogDef = null;
@@ -322,18 +325,26 @@ export class BuildingTooltip {
 
       const people = rt.people || 0;
       const maxPeople = rt.maxPeople || houseMaxPeople(def);
-      peopleText = `${people}/${maxPeople}`;
-      const infl = rt.influence || 0;
-      const bonusPct = Math.round((infl / 100) * 10) / 10;
-      const projected = houseIncome(def, people, infl);
+      peopleText = maxPeople > 0 ? `${people}/${maxPeople}` : String(people);
+      const contract = this.getContract?.(rt.contractId) || null;
+      const bonusPct = houseContractBonusPercent(def);
+      const projected = contract
+        ? contractIncome(contract, def)
+        : houseIncome(def, people, rt.influence || 0);
       cashText = String(rt.status === STATUS.READY ? rt.lastIncome || projected : projected);
       xpText = String(houseCollectXp(def, Number(cashText) || 0));
-      if (roadOk && rt.status === STATUS.WAITING && rt.durationMs > 0) {
+      if (!roadOk) {
+        statusNote = "Sin carretera al HQ";
+      } else if (rt.status === STATUS.IDLE || rt.contractId == null) {
+        statusNote = "Toca para firmar contrato";
+        cashText = "—";
+        showTimer = false;
+      } else if (rt.status === STATUS.WAITING && rt.durationMs > 0) {
         showTimer = true;
         timeText = formatTipTime(rt.remainingMs / TIME_SCALE);
         progressPct = Math.max(0, Math.min(100, (1 - rt.remainingMs / rt.durationMs) * 100));
-        if (people < maxPeople) statusNote = "Población en crecimiento";
-      } else if (roadOk && rt.status === STATUS.READY) {
+        statusNote = contract ? `Contrato: ${contract.name}` : "Contrato en curso";
+      } else if (rt.status === STATUS.READY) {
         showTimer = true;
         timeText = "¡Listo!";
         progressPct = 100;
@@ -362,7 +373,6 @@ export class BuildingTooltip {
         const bonusPct = Math.round(bonusFrac * 1000) / 10;
         const basePerMin = getBuildingProductionPerMinute(def);
         const finalPerMin = getBuildingFinalProduction(this.building);
-        const houseCount = rt.houseCount ?? 0;
         cashText = String(pending);
         xpText = String(buildPlaceXp(def));
         peopleLabel = "Botín";
@@ -380,7 +390,7 @@ export class BuildingTooltip {
           const left = Math.max(0, intervalMs - elapsed);
           timeText = formatTipTime(left);
           progressPct = Math.max(0, Math.min(100, (elapsed / intervalMs) * 100));
-          statusNote = `$${Math.round(finalPerMin * 10) / 10}/min · ${houseCount} casa${houseCount === 1 ? "" : "s"}`;
+          statusNote = `$${Math.round(finalPerMin * 10) / 10}/min`;
         }
         return {
           kind: "shop",
@@ -398,7 +408,6 @@ export class BuildingTooltip {
           finalPerMin: Math.round(finalPerMin * 10) / 10,
           pendingLoot: pending,
           maxLoot: cap,
-          houseCount,
           name,
           constructing,
           instantCost,
@@ -564,17 +573,24 @@ export class BuildingTooltip {
         `;
       } else {
         const maxP = houseMaxPeople(def);
-        const reward = formatDuration(houseRewardDurationMs(def));
+        const contractBonus = houseContractBonusPercent(def);
         extra = `
-          <div class="bldg-tip-status">La población crece sola</div>
-          <div class="bldg-tip-tenants">
+          ${
+            contractBonus > 0
+              ? `<div class="bldg-tip-tenants">
+            <span class="bldg-tip-tenants-label">Bonus contrato:</span>
+            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">+${escapeHtml(String(contractBonus))}%</span></span>
+          </div>`
+              : ""
+          }
+          ${
+            maxP > 0
+              ? `<div class="bldg-tip-tenants">
             <span class="bldg-tip-tenants-label">Población máx:</span>
             <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(String(maxP))}</span></span>
-          </div>
-          <div class="bldg-tip-tenants">
-            <span class="bldg-tip-tenants-label">Cobro cada:</span>
-            <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(reward)}</span></span>
-          </div>
+          </div>`
+              : ""
+          }
           <div class="bldg-tip-tenants">
             <span class="bldg-tip-tenants-label">Construcción:</span>
             <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
@@ -589,10 +605,8 @@ export class BuildingTooltip {
           : def.rewardBonusScaled != null
             ? Math.round((def.rewardBonusScaled / 100) * 100) / 100
             : 0;
-      const radio =
-        def.influenceRadiusTiles != null ? ` · radio ${def.influenceRadiusTiles}` : "";
       extra = `
-        <div class="bldg-tip-status">+${escapeHtml(String(pct))}% casas y comercios${escapeHtml(radio)}</div>
+        <div class="bldg-tip-status">+${escapeHtml(String(pct))}% global a casas y comercios (se acumula)</div>
         <div class="bldg-tip-tenants">
           <span class="bldg-tip-tenants-label">Construcción:</span>
           <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${escapeHtml(buildLabel)}</span></span>
@@ -605,9 +619,8 @@ export class BuildingTooltip {
         const cap = maxLootOf(def);
         const interval = formatDuration((def.lootInterval || 60) * 1000);
         const radio = def.influenceRadiusTiles != null ? String(def.influenceRadiusTiles) : "—";
-        const pct = commerceHouseBonusPercent(def);
         extra = `
-          <div class="bldg-tip-status">Botín · +${pct}% por casa en radio</div>
+          <div class="bldg-tip-status">Botín · bonus = % de cada casa en radio</div>
           <div class="bldg-tip-tenants">
             <span class="bldg-tip-tenants-label">Producción:</span>
             <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num">${cashHtml(perMin)}/min</span></span>
@@ -825,17 +838,7 @@ export class BuildingTooltip {
             <span class="bldg-tip-tenants-val">
               <span class="bldg-tip-tenants-num bldg-tip-final-num">$${escapeHtml(String(m.finalPerMin))}/min</span>
             </span>
-          </div>
-          ${
-            m.kind === "shop" && m.houseCount != null
-              ? `<div class="bldg-tip-tenants">
-            <span class="bldg-tip-tenants-label">Casas en radio:</span>
-            <span class="bldg-tip-tenants-val">
-              <span class="bldg-tip-tenants-num">${escapeHtml(String(m.houseCount))}</span>
-            </span>
           </div>`
-              : ""
-          }`
       : "";
     this.root.innerHTML = `
       <div class="bldg-tip-card">
@@ -938,7 +941,7 @@ export class BuildingTooltip {
             <span class="bldg-tip-tenants-label">Diamante (+${escapeHtml(m.diaAmt)}):</span>
             <span class="bldg-tip-tenants-val"><span class="bldg-tip-tenants-num"><img class="gold-ico gold-ico--inline" src="${ICONS.diamond}" alt="" />${escapeHtml(m.diaText)}</span></span>
           </div>
-          <div class="bldg-tip-footnote">+${escapeHtml(m.bonusPct)}% casas y comercios en radio</div>
+          <div class="bldg-tip-footnote">+${escapeHtml(m.bonusPct)}% global a casas y comercios (se acumula)</div>
         </div>
         <div class="bldg-tip-arrow"></div>
       </div>

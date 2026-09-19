@@ -20,16 +20,22 @@
       <header class="hud-top">
         <div class="hud-left">
           <a href="/" class="site-menu-link" title="Volver al menú" data-tip="Volver al menú principal">Menú</a>
-          <div class="xp-hud" id="xp-hud" data-tip="Mantén pulsado para ver las próximas recompensas de nivel">
-            <div class="xp-star"><span id="level">1</span></div>
-            <div class="xp-track">
-              <div class="xp-fill" id="xp-fill"></div>
-              <span class="xp-label" id="xp">100</span>
+          <div class="hud-left-stack">
+            <div class="xp-hud" id="xp-hud" data-tip="Mantén pulsado para ver las próximas recompensas de nivel">
+              <div class="xp-star"><span id="level">1</span></div>
+              <div class="xp-track">
+                <div class="xp-fill" id="xp-fill"></div>
+                <span class="xp-label" id="xp">0</span>
+              </div>
+              <div class="level-reward-tip" id="level-reward-tip" hidden>
+                <div class="level-reward-tip-title">Próximas recompensas</div>
+                <div class="level-reward-tip-body" id="level-reward-tip-body"></div>
+                <div class="level-reward-tip-arrow" aria-hidden="true"></div>
+              </div>
             </div>
-            <div class="level-reward-tip" id="level-reward-tip" hidden>
-              <div class="level-reward-tip-title">Próximas recompensas</div>
-              <div class="level-reward-tip-body" id="level-reward-tip-body"></div>
-              <div class="level-reward-tip-arrow" aria-hidden="true"></div>
+            <div class="pop-hud" id="pop-hud" title="Población" data-tip="Población: personas en casas con contrato activo">
+              <img class="pop-icon" src="assets/ui/icon_people.png" alt="" />
+              <strong id="population">0</strong>
             </div>
           </div>
         </div>
@@ -56,11 +62,14 @@
 
       <aside class="shop" id="shop">
         <div class="shop-tray">
-          <div class="tabs">
-            <button type="button" class="tab active" data-tab="houses">Casas</button>
-            <button type="button" class="tab" data-tab="commerces">Comercios</button>
-            <button type="button" class="tab" data-tab="decorations">Decoración</button>
-            <button type="button" class="tab" data-tab="wonders">Maravillas</button>
+          <div class="shop-toolbar">
+            <div class="tabs">
+              <button type="button" class="tab active" data-tab="houses">Casas</button>
+              <button type="button" class="tab" data-tab="commerces">Comercios</button>
+              <button type="button" class="tab" data-tab="decorations">Decoración</button>
+              <button type="button" class="tab" data-tab="wonders">Maravillas</button>
+            </div>
+            <button type="button" id="shop-close" class="shop-close" title="Cerrar" aria-label="Cerrar tienda">×</button>
           </div>
           <div class="catalog" id="catalog"></div>
         </div>
@@ -116,6 +125,17 @@
         </div>
         <div class="missions-list" id="missions-list"></div>
         <div id="mission-detail" class="mission-detail" hidden></div>
+      </div>
+    </div>
+
+    <div id="contracts-panel" class="expand-panel contracts-panel" hidden>
+      <div class="expand-window contracts-window" role="dialog" aria-labelledby="contracts-title">
+        <header class="expand-header">
+          <h2 id="contracts-title">Contrato</h2>
+          <button type="button" id="contracts-close" class="missions-close" aria-label="Cerrar">×</button>
+        </header>
+        <p class="expand-copy" id="contracts-sub">Elige un contrato de alquiler.</p>
+        <div class="contracts-list" id="contracts-list"></div>
       </div>
     </div>
 

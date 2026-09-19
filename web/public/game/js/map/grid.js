@@ -12,6 +12,8 @@ export class Grid {
     this.river = null;
     /** @type {import("./expansions.js").ExpansionLayer|null} */
     this.expansions = null;
+    /** @type {import("./nature.js").NatureLayer|null} */
+    this.nature = null;
     this._nextId = 1;
   }
 
@@ -29,6 +31,7 @@ export class Grid {
     for (let y = ty; y < ty + h; y++) {
       for (let x = tx; x < tx + w; x++) {
         if (this.river?.occupies(x, y)) return false;
+        if (this.nature?.has(x, y)) return false;
         const cell = this.cells[this.index(x, y)];
         if (cell && cell.id !== ignoreId) return false;
       }

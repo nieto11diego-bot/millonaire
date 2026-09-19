@@ -6,7 +6,6 @@ import {
   houseIncome,
   houseCollectXp,
   houseMaxPeople,
-  houseRewardDurationMs,
   houseGrowthIntervalMs,
   computeHouseInfluence,
   computeCommerceInfluence,
@@ -29,10 +28,15 @@ import {
   usesLootEconomy,
   accrueHouseLoot,
   countHousesInCommerceRadius,
+  findContract,
+  contractCost,
+  contractIncome,
+  contractDurationMs,
+  contractCollectXp,
 } from "./economy.js";
 
 /**
- * Simulation ticker for house loot + commerce income + wonder premiums.
+ * Simulation ticker for house contracts + commerce income + wonder premiums.
  */
 export class EconomySim {
   /**
@@ -42,6 +46,8 @@ export class EconomySim {
     this.grid = grid;
     this.roads = roads;
     this.graph = graph;
+    this.economy = economy || {};
+    this.contracts = economy?.contracts || [];
     this.index = makeEconomyIndex(economy);
     this.onEvent = onEvent;
   }
@@ -67,6 +73,10 @@ export class EconomySim {
               (b.runtime.pendingLoot || 0) > 0 ? STATUS.READY : STATUS.WAITING;
           }
           b.runtime.lastIncome = Math.floor(b.runtime.pendingLoot || 0);
+        } else if (b.runtime.contractId != null) {
+          // Contract payout is flat — no decoration/wonder/commerce %.
+          const contract = findContract(this.contracts, b.runtime.contractId);
+          b.runtime.lastIncome = contract ? contractIncome(contract, b.def) : 0;
         } else if (b.runtime.status === STATUS.READY) {
           b.runtime.lastIncome = houseIncome(b.def, b.runtime.people, b.runtime.influence);
         }
@@ -180,18 +190,19 @@ export class EconomySim {
       return dirty || changed;
     }
 
+    // Contract rent cycle
+    if (rt.contractId == null) return dirty;
+    if (rt.status !== STATUS.WAITING) return dirty;
     if (!roadOk) return dirty;
 
-    if (rt.status === STATUS.WAITING) {
-      rt.remainingMs -= step;
-      if (rt.remainingMs <= 0) {
-        rt.remainingMs = 0;
-        rt.status = STATUS.READY;
-        rt.influence = computeHouseInfluence(b, this.grid.buildings);
-        rt.lastIncome = houseIncome(b.def, rt.people, rt.influence);
-        this.onEvent("rent_ready", { building: b });
-        dirty = true;
-      }
+    rt.remainingMs -= step;
+    if (rt.remainingMs <= 0) {
+      rt.remainingMs = 0;
+      rt.status = STATUS.READY;
+      const contract = findContract(this.contracts, rt.contractId);
+      rt.lastIncome = contract ? contractIncome(contract, b.def) : 0;
+      this.onEvent("rent_ready", { building: b, contract });
+      dirty = true;
     }
     return dirty;
   }
@@ -250,7 +261,38 @@ export class EconomySim {
   }
 
   /**
-   * Collect accrued house loot (or legacy cycle rent).
+   * Sign a rental contract on an idle house.
+   * @returns {{ ok: boolean, cost?: number, reason?: string, contract?: object }}
+   */
+  signContract(building, contractId, cashAvailable = Infinity) {
+    if (building?.def?.category !== "house") return { ok: false, reason: "no_house" };
+    if (usesLootEconomy(building.def)) return { ok: false, reason: "loot_house" };
+    const rt = building.runtime;
+    if (!rt || rt.status === STATUS.BUILDING) return { ok: false, reason: "building" };
+    if (rt.contractId != null && (rt.status === STATUS.WAITING || rt.status === STATUS.READY)) {
+      return { ok: false, reason: "busy" };
+    }
+
+    const contract = findContract(this.contracts, contractId);
+    if (!contract) return { ok: false, reason: "bad_contract" };
+
+    const cost = contractCost(contract, building.def);
+    if (cashAvailable < cost) return { ok: false, reason: "no_cash", cost };
+
+    const durationMs = contractDurationMs(contract);
+    rt.contractId = contract.id;
+    rt.status = STATUS.WAITING;
+    rt.durationMs = durationMs;
+    rt.remainingMs = durationMs;
+    rt.lastIncome = contractIncome(contract, building.def);
+    rt.maxPeople = houseMaxPeople(building.def);
+
+    this.onEvent("contract_signed", { building, contract, cost });
+    return { ok: true, cost, contract };
+  }
+
+  /**
+   * Collect accrued house loot or finished contract rent.
    * @returns {{ ok: boolean, cash?: number, xp?: number, reason?: string }}
    */
   collectRent(building) {
@@ -281,14 +323,18 @@ export class EconomySim {
 
     if (rt.status !== STATUS.READY) return { ok: false, reason: "not_ready" };
 
-    rt.influence = computeHouseInfluence(building, this.grid.buildings);
-    const cash = houseIncome(building.def, rt.people, rt.influence);
-    const xp = houseCollectXp(building.def, cash);
+    const contract = findContract(this.contracts, rt.contractId);
+    const cash = contract
+      ? contractIncome(contract, building.def)
+      : Math.max(0, Math.floor(Number(rt.lastIncome) || 0));
+    if (cash <= 0) return { ok: false, reason: "not_ready" };
 
-    const durationMs = houseRewardDurationMs(building.def);
-    rt.status = STATUS.WAITING;
-    rt.durationMs = durationMs;
-    rt.remainingMs = durationMs;
+    const xp = contract ? contractCollectXp(contract, cash) : houseCollectXp(building.def, cash);
+
+    rt.status = STATUS.IDLE;
+    rt.contractId = null;
+    rt.durationMs = 0;
+    rt.remainingMs = 0;
     rt.lastIncome = cash;
 
     this.recomputeAll();
@@ -297,6 +343,7 @@ export class EconomySim {
       cash,
       xp,
       people: rt.people,
+      contract,
     });
     return { ok: true, cash, xp };
   }
@@ -378,7 +425,7 @@ export class EconomySim {
 
   /**
    * Resolve tap on a building → action hint for UI.
-   * @returns {"collect_rent"|"collect_commerce"|"collect_wonder"|"finish_build"|"noop"}
+   * @returns {"collect_rent"|"collect_commerce"|"collect_wonder"|"finish_build"|"sign_contract"|"noop"}
    */
   tapAction(building) {
     if (!building?.runtime) return "noop";
@@ -391,6 +438,7 @@ export class EconomySim {
         return "noop";
       }
       if (st === STATUS.READY) return "collect_rent";
+      if (st === STATUS.IDLE || building.runtime.contractId == null) return "sign_contract";
       return "noop";
     }
     if (cat === "commercial") {

@@ -4,7 +4,8 @@ import {
   commerceCycleReward,
   usesLootEconomy,
   getBuildingProductionPerMinute,
-  commerceHouseBonusPercent,
+  houseMaxPeople,
+  houseContractBonusPercent,
 } from "../economy.js";
 
 /**
@@ -84,7 +85,15 @@ export class ShopUI {
       default:
         return [];
     }
-    return [...items].sort((a, b) => normalizedBuildCost(a) - normalizedBuildCost(b));
+    return [...items].sort((a, b) => {
+      const ca = normalizedBuildCost(a);
+      const cb = normalizedBuildCost(b);
+      // Free / unset price last (shop progression by real price)
+      const za = ca === 0 ? 1 : 0;
+      const zb = cb === 0 ? 1 : 0;
+      if (za !== zb) return za - zb;
+      return ca - cb;
+    });
   }
 
   subtitle(item) {
@@ -95,12 +104,16 @@ export class ShopUI {
       const perMin = Math.round(getBuildingProductionPerMinute(item) * 10) / 10;
       return meta(`${size} · ${cashHtml(perMin)}/min`);
     }
+    if (item.category === "house") {
+      const ppl = houseMaxPeople(item);
+      const pplLabel = ppl > 0 ? ` · ${ppl} pers.` : "";
+      const bonus = houseContractBonusPercent(item);
+      const bonusLabel = bonus > 0 ? ` · +${bonus}% botín` : "";
+      return meta(`${size} · contratos${pplLabel}${bonusLabel}`);
+    }
     if (item.category === "commercial" && usesLootEconomy(item)) {
       const perMin = Math.round(getBuildingProductionPerMinute(item) * 10) / 10;
-      const radio =
-        item.influenceRadiusTiles != null ? ` · radio ${item.influenceRadiusTiles}` : "";
-      const pct = commerceHouseBonusPercent(item);
-      return meta(`${size} · ${cashHtml(perMin)}/min · +${pct}%/casa${radio}`);
+      return meta(`${size} · ${cashHtml(perMin)}/min`);
     }
     if (item.category === "commercial" && item.rewardSec != null) {
       const sec = item.rewardSec;
@@ -116,11 +129,7 @@ export class ShopUI {
           : item.rewardBonusScaled != null
             ? Math.round((item.rewardBonusScaled / 100) * 100) / 100
             : 0;
-      const infl =
-        item.influenceRadiusTiles != null && item.influenceRadiusTiles >= 0
-          ? ` · radio ${item.influenceRadiusTiles}`
-          : "";
-      return meta(`${size} · +${pct}% casas/comercios${infl}`);
+      return meta(`${size} · +${pct}% global (acumula)`);
     }
     if (item.houseBonusPercentApprox != null || item.houseBonusScaled != null) {
       const pct =

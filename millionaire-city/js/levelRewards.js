@@ -22,12 +22,12 @@ export function rewardForLevel(level) {
   }
 
   if (lv % 2 === 0) {
-    // Gold scales gently with level (L2→1, L6→2, L12→4…)
-    return { type: "gold", amount: Math.max(1, Math.round(lv / 3)) };
+    // Gold scales gently with level (L2→2, L6→4, L12→8…)
+    return { type: "gold", amount: Math.max(1, Math.round(lv / 3)) * 2 };
   }
 
-  // Cash: equitable curve vs. level (half of previous scale)
-  const amount = Math.round(12_500 * lv * (1 + (lv - 1) * 0.1));
+  // Cash: equitable curve vs. level (×2 of prior scale)
+  const amount = Math.round(12_500 * lv * (1 + (lv - 1) * 0.1)) * 2;
   return { type: "cash", amount };
 }
 

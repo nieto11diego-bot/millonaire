@@ -126,4 +126,22 @@ export class RoadLayer {
     if (place && blocked && blocked(tx, ty)) return false;
     return this.set(tx, ty, place, kind);
   }
+
+  /**
+   * Remove any road tiles under a building footprint (hard exclusion).
+   * @param {number} tx
+   * @param {number} ty
+   * @param {number} w
+   * @param {number} h
+   * @returns {number} tiles cleared
+   */
+  clearFootprint(tx, ty, w, h) {
+    let n = 0;
+    for (let y = ty; y < ty + h; y++) {
+      for (let x = tx; x < tx + w; x++) {
+        if (this.set(x, y, false)) n += 1;
+      }
+    }
+    return n;
+  }
 }

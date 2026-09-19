@@ -205,13 +205,14 @@ export function hydrateRuntime(rt) {
  *   roads: import("./map/roads.js").RoadLayer,
  *   expansions: import("./map/expansions.js").ExpansionLayer,
  *   river: import("./map/river.js").RiverLayer,
+ *   nature?: import("./map/nature.js").NatureLayer,
  *   missions: import("./missions.js").MissionTracker,
  *   renderer?: import("./map/renderer.js").Renderer,
  *   riverOpts?: { marginRight?: number, bridgeEvery?: number },
  * }} ctx
  */
 export function buildSnapshot(ctx) {
-  const { state, grid, roads, expansions, river, missions, renderer, riverOpts } = ctx;
+  const { state, grid, roads, expansions, river, nature, missions, renderer, riverOpts } = ctx;
   return {
     version: SAVE_VERSION,
     savedAt: Date.now(),
@@ -231,6 +232,7 @@ export function buildSnapshot(ctx) {
       runtime: serializeRuntime(b.runtime),
     })),
     roads: serializeRoads(roads),
+    nature: nature ? nature.serialize() : [],
     expansions: {
       owned: [...expansions.owned],
       boughtCount: expansions.boughtCount,
@@ -276,6 +278,7 @@ function serializeRoads(roads) {
  *   roads: import("./map/roads.js").RoadLayer,
  *   expansions: import("./map/expansions.js").ExpansionLayer,
  *   river: import("./map/river.js").RiverLayer,
+ *   nature?: import("./map/nature.js").NatureLayer,
  *   missions: import("./missions.js").MissionTracker,
  *   renderer?: import("./map/renderer.js").Renderer,
  *   defsByObjectId: Map<number, object>,
@@ -295,6 +298,7 @@ export function applySnapshot(snapshot, ctx) {
     roads,
     expansions,
     river,
+    nature,
     missions,
     renderer,
     defsByObjectId,
@@ -347,11 +351,31 @@ export function applySnapshot(snapshot, ctx) {
       runtime: hydrateRuntime(row.runtime) || createRuntime(def, { skipBuild: true }),
     });
     if (!placed) continue;
+    // Hard exclusion: never keep roads under a building footprint
+    roads.clearFootprint(placed.tx, placed.ty, placed.def.gridW, placed.def.gridH);
     restored += 1;
     const m = /^b(\d+)$/.exec(placed.id || "");
     if (m) maxId = Math.max(maxId, Number(m[1]) || 0);
   }
   if (maxId >= grid._nextId) grid._nextId = maxId + 1;
+
+  if (nature) {
+    const isBlocked = (tx, ty, w, h) => {
+      for (let y = ty; y < ty + h; y++) {
+        for (let x = tx; x < tx + w; x++) {
+          if (river?.has(x, y)) return true;
+          if (roads?.has(x, y)) return true;
+          if (grid.buildingAt(x, y)) return true;
+        }
+      }
+      return false;
+    };
+    if (Array.isArray(snapshot.nature) && snapshot.nature.length) {
+      nature.load(snapshot.nature, isBlocked);
+    } else {
+      nature.clear();
+    }
+  }
 
   const ms = snapshot.missions || {};
   for (const sku of Object.keys(missions.counted)) {

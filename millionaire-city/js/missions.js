@@ -2,6 +2,8 @@
  * Mission progress tracker — ports MissionScreen / MissionObject from the original game.
  */
 
+import { cityPopulation } from "./economy.js";
+
 export const STATE = {
   OPEN: "open",
   LOCKED: "locked",
@@ -275,13 +277,8 @@ export class MissionTracker {
       if (need > 0 && bestPct >= need) this.improve(sku);
     }
 
-    // Total city population missions
-    let population = 0;
-    for (const b of grid.buildings) {
-      if (b.def?.category !== "house") continue;
-      if (b.runtime?.status === "building") continue;
-      population += b.runtime?.people || 0;
-    }
+    // Total city population missions (houses with active contract only)
+    const population = cityPopulation(grid.buildings);
     for (const sku of [5, 6]) {
       const m = this.bySku.get(sku);
       if (!m || this.isCompleted(sku) || !this.isUnlocked(sku)) continue;

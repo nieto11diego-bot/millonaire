@@ -33,6 +33,8 @@ export class Renderer {
     this.river = null;
     /** @type {import("./expansions.js").ExpansionLayer|null} */
     this.expansions = null;
+    /** @type {import("./nature.js").NatureLayer|null} */
+    this.nature = null;
     /** Show tile grid only while placing / moving. */
     this.showGrid = false;
     /** Flat base grass color. */
@@ -58,12 +60,16 @@ export class Renderer {
     this.cssHeight = h;
   }
 
-  async preload(defs) {
+  async preload(defs, extraUrls = []) {
     const urls = [
-      ...new Set(defs.map((d) => d.spriteUrl).filter(Boolean)),
-      "assets/ui/icon_cash.png",
-      "assets/ui/icon_gold.svg",
-      "assets/ui/icon_diamond.svg",
+      ...new Set([
+        ...defs.map((d) => d.spriteUrl).filter(Boolean),
+        ...extraUrls,
+        "assets/ui/icon_cash.png",
+        "assets/ui/icon_gold.svg",
+        "assets/ui/icon_diamond.svg",
+        "assets/ui/icon_contract.svg",
+      ]),
     ];
     await Promise.all(
       urls.map(
@@ -143,9 +149,6 @@ export class Renderer {
     // Locked expansion parcels + for-sale signs
     this._drawExpansions();
 
-    // Picket fences along every expansion parcel perimeter
-    this._drawExpansionFences();
-
     if (this.showGrid) {
       ctx.strokeStyle = "rgba(0,0,0,0.12)";
       ctx.lineWidth = 1;
@@ -163,12 +166,14 @@ export class Renderer {
       }
     }
 
-    // Roads under buildings (autotiled)
+    // Roads under fences and buildings (autotiled)
     if (this.roads) {
       for (let ty = 0; ty < rows; ty++) {
         for (let tx = 0; tx < cols; tx++) {
           if (!this.roads.has(tx, ty)) continue;
           if (this.river?.has(tx, ty)) continue;
+          // Never draw a road through an occupied building cell
+          if (this.grid.buildingAt(tx, ty)) continue;
           const url = this.roads.spriteFor(tx, ty);
           const img = this.roads.images.get(url) || this.images.get(url);
           if (img) {
@@ -181,6 +186,9 @@ export class Renderer {
         }
       }
     }
+
+    // Picket fences over roads, under buildings
+    this._drawExpansionFences();
 
     // Ghost placement (previews under building sprites when applicable)
     if (this.hover && this.hover.road) {
@@ -207,20 +215,39 @@ export class Renderer {
       this._drawInfluenceRadius(tx, ty, def);
     }
 
-    // Buildings Y-sorted by bottom of footprint (skip one being dragged)
+    // Buildings + nature Y-sorted by bottom of footprint
     const hideId = this.hover?.hideId || null;
-    const sorted = [...this.grid.buildings].sort((a, b) => {
-      const ay = a.ty + a.def.gridH;
-      const by = b.ty + b.def.gridH;
-      return ay - by || a.tx - b.tx;
-    });
+    /** @type {{ bottom: number, tx: number, draw: () => void }[]} */
+    const drawList = [];
 
-    for (const b of sorted) {
+    for (const b of this.grid.buildings) {
       if (hideId && b.id === hideId) continue;
       const constructing = b.runtime?.status === "building";
-      this._drawBuilding(b.def, b.tx, b.ty, constructing ? 0.72 : 1);
-      this._drawStatus(b);
+      const alpha = constructing ? 0.72 : 1;
+      drawList.push({
+        bottom: b.ty + b.def.gridH,
+        tx: b.tx,
+        draw: () => {
+          this._drawBuilding(b.def, b.tx, b.ty, alpha);
+          this._drawStatus(b);
+        },
+      });
     }
+
+    if (this.nature) {
+      for (const n of this.nature.items) {
+        if (hideId && n.id === hideId) continue;
+        const k = n.kind;
+        drawList.push({
+          bottom: n.ty + k.gridH,
+          tx: n.tx,
+          draw: () => this._drawNature(n),
+        });
+      }
+    }
+
+    drawList.sort((a, b) => a.bottom - b.bottom || a.tx - b.tx);
+    for (const entry of drawList) entry.draw();
 
     this._drawHighlight();
 
@@ -286,58 +313,88 @@ export class Renderer {
   }
 
   /**
-   * Light-gray picket fences along the owned-land perimeter (MC-style).
-   * Shared edges between two owned parcels are omitted; river / road tiles
-   * are skipped as openings. Edges next to unowned land are outset a few px
-   * so sprites on the parcel rim do not sit under the pickets.
+   * Light-gray picket fences on every expansion parcel perimeter (MC-style).
+   * Shared edges between two owned parcels are omitted (merged land). All
+   * other zone edges — including locked↔locked and map borders — get a
+   * fence. River tiles open a gap; roads never do.
    */
   _drawExpansionFences() {
     const exp = this.expansions;
     if (!exp) return;
     const tile = this.grid.tile;
     const { zoneW, zoneH, zonesX, zonesY } = exp;
-    /** @type {number} px gap between owned parcel content and fence */
+    /** @type {number} px gap between owned parcel content and unowned side */
     const outset = 5;
 
-    // Horizontal edges (zy = 0 .. zonesY inclusive) — only owned↔unowned perimeter
+    // Horizontal edges (zy = 0 .. zonesY inclusive)
     for (let zy = 0; zy <= zonesY; zy++) {
       const y = zy * zoneH * tile;
       for (let zx = 0; zx < zonesX; zx++) {
-        const aboveOwned = zy > 0 && exp.isOwnedZone(zx, zy - 1);
-        const belowOwned = zy < zonesY && exp.isOwnedZone(zx, zy);
-        if (aboveOwned === belowOwned) continue;
+        const aboveZone = zy > 0;
+        const belowZone = zy < zonesY;
+        if (!aboveZone && !belowZone) continue;
+        const aboveOwned = aboveZone && exp.isOwnedZone(zx, zy - 1);
+        const belowOwned = belowZone && exp.isOwnedZone(zx, zy);
+        // Merged owned land: no fence between two owned parcels
+        if (aboveOwned && belowOwned) continue;
+
         let yDraw = y;
-        if (aboveOwned && !belowOwned) yDraw = y + outset;
-        else if (!aboveOwned && belowOwned) yDraw = y - outset;
+        /** Rim row for river gap (prefer the non-owned / locked side). */
+        let rimTy = null;
+        if (aboveOwned && !belowOwned) {
+          yDraw = y + outset;
+          rimTy = aboveZone ? zy * zoneH - 1 : zy * zoneH;
+        } else if (!aboveOwned && belowOwned) {
+          yDraw = y - outset;
+          rimTy = belowZone ? zy * zoneH : zy * zoneH - 1;
+        } else {
+          // Locked↔locked (or map edge of a locked parcel): sit on the grid line
+          rimTy = belowZone ? zy * zoneH : zy * zoneH - 1;
+        }
         const x0 = zx * zoneW * tile;
-        this._drawFenceRun(x0, yDraw, zoneW * tile, true);
+        this._drawFenceRun(x0, yDraw, zoneW * tile, true, null, rimTy);
       }
     }
 
-    // Vertical edges (zx = 0 .. zonesX inclusive) — only owned↔unowned perimeter
+    // Vertical edges (zx = 0 .. zonesX inclusive)
     for (let zx = 0; zx <= zonesX; zx++) {
       const x = zx * zoneW * tile;
       for (let zy = 0; zy < zonesY; zy++) {
-        const leftOwned = zx > 0 && exp.isOwnedZone(zx - 1, zy);
-        const rightOwned = zx < zonesX && exp.isOwnedZone(zx, zy);
-        if (leftOwned === rightOwned) continue;
+        const leftZone = zx > 0;
+        const rightZone = zx < zonesX;
+        if (!leftZone && !rightZone) continue;
+        const leftOwned = leftZone && exp.isOwnedZone(zx - 1, zy);
+        const rightOwned = rightZone && exp.isOwnedZone(zx, zy);
+        if (leftOwned && rightOwned) continue;
+
         let xDraw = x;
-        if (leftOwned && !rightOwned) xDraw = x + outset;
-        else if (!leftOwned && rightOwned) xDraw = x - outset;
+        let rimTx = null;
+        if (leftOwned && !rightOwned) {
+          xDraw = x + outset;
+          rimTx = leftZone ? zx * zoneW - 1 : zx * zoneW;
+        } else if (!leftOwned && rightOwned) {
+          xDraw = x - outset;
+          rimTx = rightZone ? zx * zoneW : zx * zoneW - 1;
+        } else {
+          rimTx = rightZone ? zx * zoneW : zx * zoneW - 1;
+        }
         const y0 = zy * zoneH * tile;
-        this._drawFenceRun(xDraw, y0, zoneH * tile, false);
+        this._drawFenceRun(xDraw, y0, zoneH * tile, false, rimTx, null);
       }
     }
   }
 
   /**
    * One straight fence segment in world pixels.
+   * Gaps only where the rim tile is river (not road).
    * @param {number} x
    * @param {number} y
    * @param {number} length
    * @param {boolean} horizontal
+   * @param {number|null} rimTx fixed rim tx, or null to derive from segment
+   * @param {number|null} rimTy fixed rim ty, or null to derive from segment
    */
-  _drawFenceRun(x, y, length, horizontal) {
+  _drawFenceRun(x, y, length, horizontal, rimTx = null, rimTy = null) {
     const ctx = this.ctx;
     const tile = this.grid.tile;
     const picketGap = 15.35625;
@@ -352,17 +409,16 @@ export class Renderer {
       const segLen = Math.min(tile, length - along);
       if (segLen <= 1) continue;
 
-      let tx;
-      let ty;
-      if (horizontal) {
-        tx = Math.floor((x + along + segLen * 0.5) / tile);
-        ty = Math.floor(y / tile);
-        if (this._fenceBlocked(tx, ty) || this._fenceBlocked(tx, ty - 1)) continue;
-      } else {
-        tx = Math.floor(x / tile);
-        ty = Math.floor((y + along + segLen * 0.5) / tile);
-        if (this._fenceBlocked(tx, ty) || this._fenceBlocked(tx - 1, ty)) continue;
-      }
+      const segTx = horizontal
+        ? Math.floor((x + along + segLen * 0.5) / tile)
+        : Math.floor(x / tile);
+      const segTy = horizontal
+        ? Math.floor(y / tile)
+        : Math.floor((y + along + segLen * 0.5) / tile);
+      const tx = rimTx != null ? rimTx : segTx;
+      const ty = rimTy != null ? rimTy : segTy;
+      // Only river opens a fence gap — roads stay under the pickets
+      if (this._fenceRiverGap(tx, ty)) continue;
 
       const x0 = horizontal ? x + along : x;
       const y0 = horizontal ? y : y + along;
@@ -404,12 +460,10 @@ export class Renderer {
     }
   }
 
-  /** @param {number} tx @param {number} ty */
-  _fenceBlocked(tx, ty) {
+  /** River on the rim opens a fence gap; roads do not. */
+  _fenceRiverGap(tx, ty) {
     if (tx < 0 || ty < 0 || tx >= this.grid.cols || ty >= this.grid.rows) return false;
-    if (this.river?.has(tx, ty)) return true;
-    if (this.roads?.has(tx, ty)) return true;
-    return false;
+    return !!this.river?.has(tx, ty);
   }
 
   /**
@@ -474,7 +528,7 @@ export class Renderer {
   }
 
   /**
-   * Wooden "EN VENTA" sign with price (MC-style).
+   * Modern luxury "EN VENTA" sign (gold / vivid accents).
    * @param {number} cx
    * @param {number} cy
    * @param {number} cost
@@ -482,68 +536,148 @@ export class Renderer {
    */
   _drawForSaleSign(cx, cy, cost, hovered = false) {
     const ctx = this.ctx;
-    const scale = hovered ? 1.08 : 1;
+    const scale = hovered ? 1.1 : 1;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(scale, scale);
 
-    // Post
-    ctx.fillStyle = "#6b4a28";
-    ctx.fillRect(-4, -8, 8, 52);
-    ctx.fillStyle = "#4a3218";
-    ctx.fillRect(-4, 40, 8, 6);
-
-    // Board
-    const bw = 92;
-    const bh = 48;
+    const bw = 102;
+    const bh = 52;
     const bx = -bw / 2;
-    const by = -52;
-    ctx.fillStyle = "#c4a35a";
-    ctx.strokeStyle = "#5a3e1c";
-    ctx.lineWidth = 2;
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.strokeRect(bx, by, bw, bh);
+    const by = -56;
+    const r = 10;
 
-    // Inner border
-    ctx.strokeStyle = "rgba(90, 50, 20, 0.35)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 4, by + 4, bw - 8, bh - 8);
+    // Soft luxury glow under the board
+    ctx.save();
+    ctx.shadowColor = hovered ? "rgba(255, 200, 60, 0.75)" : "rgba(255, 180, 40, 0.45)";
+    ctx.shadowBlur = hovered ? 18 : 10;
+    ctx.fillStyle = "rgba(255, 210, 80, 0.35)";
+    this._roundRect(bx - 2, by - 2, bw + 4, bh + 4, r + 2);
+    ctx.fill();
+    ctx.restore();
 
-    ctx.fillStyle = "#7a1f1a";
-    ctx.font = "bold 11px Fredoka, sans-serif";
+    // Chrome / gold post
+    const postGrad = ctx.createLinearGradient(-5, -10, 5, 50);
+    postGrad.addColorStop(0, "#fff6c8");
+    postGrad.addColorStop(0.35, "#ffd24a");
+    postGrad.addColorStop(0.7, "#e8a010");
+    postGrad.addColorStop(1, "#b87408");
+    ctx.fillStyle = postGrad;
+    ctx.fillRect(-4.5, -10, 9, 58);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.fillRect(-3.5, -8, 2.5, 52);
+    // Base plate
+    const baseGrad = ctx.createLinearGradient(-14, 44, 14, 52);
+    baseGrad.addColorStop(0, "#ffe08a");
+    baseGrad.addColorStop(0.5, "#f0b020");
+    baseGrad.addColorStop(1, "#c88810");
+    ctx.fillStyle = baseGrad;
+    this._roundRect(-14, 44, 28, 8, 3);
+    ctx.fill();
+
+    // Board fill — deep emerald → vivid teal
+    const boardGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
+    boardGrad.addColorStop(0, "#1ee8b0");
+    boardGrad.addColorStop(0.45, "#0bb88a");
+    boardGrad.addColorStop(1, "#067a5c");
+    ctx.fillStyle = boardGrad;
+    this._roundRect(bx, by, bw, bh, r);
+    ctx.fill();
+
+    // Gold frame
+    const frameGrad = ctx.createLinearGradient(bx, by, bx + bw, by + bh);
+    frameGrad.addColorStop(0, "#fff3a8");
+    frameGrad.addColorStop(0.35, "#ffd24a");
+    frameGrad.addColorStop(0.7, "#e8a820");
+    frameGrad.addColorStop(1, "#fff0a0");
+    ctx.strokeStyle = frameGrad;
+    ctx.lineWidth = 3.5;
+    this._roundRect(bx + 1.5, by + 1.5, bw - 3, bh - 3, r - 1);
+    ctx.stroke();
+
+    // Inner highlight rim
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.lineWidth = 1.2;
+    this._roundRect(bx + 5, by + 5, bw - 10, bh - 10, r - 4);
+    ctx.stroke();
+
+    // Accent stripe (hot coral)
+    ctx.fillStyle = "#ff4d6d";
+    this._roundRect(bx + 8, by + 8, bw - 16, 3, 1.5);
+    ctx.fill();
+
+    // Title
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("EN VENTA", 0, by + 16);
+    ctx.font = "700 12px Fredoka, sans-serif";
+    ctx.fillStyle = "rgba(0, 40, 30, 0.35)";
+    ctx.fillText("EN VENTA", 0.5, by + 20.5);
+    ctx.fillStyle = "#fffef0";
+    ctx.fillText("EN VENTA", 0, by + 20);
 
-    ctx.fillStyle = "#1a4a20";
-    ctx.font = "bold 13px Fredoka, sans-serif";
+    // Price row
+    ctx.font = "700 14px Fredoka, sans-serif";
     const price = Number(cost).toLocaleString("en-US");
     const cashImg = this.images.get("assets/ui/icon_cash.png");
+    const priceY = by + 38;
     if (cashImg) {
-      const ih = 14;
+      const ih = 15;
       const iw = (cashImg.width / cashImg.height) * ih;
       const tw = ctx.measureText(price).width;
-      const gap = 4;
+      const gap = 5;
       const total = iw + gap + tw;
       const x0 = -total / 2;
-      ctx.drawImage(cashImg, x0, by + 34 - ih / 2, iw, ih);
+      ctx.drawImage(cashImg, x0, priceY - ih / 2, iw, ih);
       ctx.textAlign = "left";
-      ctx.fillText(price, x0 + iw + gap, by + 34);
+      ctx.fillStyle = "rgba(0, 40, 20, 0.4)";
+      ctx.fillText(price, x0 + iw + gap + 0.6, priceY + 0.6);
+      ctx.fillStyle = "#fff45a";
+      ctx.fillText(price, x0 + iw + gap, priceY);
       ctx.textAlign = "center";
     } else {
-      ctx.fillText(price, 0, by + 34);
+      ctx.fillStyle = "#fff45a";
+      ctx.fillText(price, 0, priceY);
     }
+
+    // Tiny sparkle accents
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.beginPath();
+    ctx.arc(bx + 14, by + 14, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(bx + bw - 12, by + bh - 12, 1.3, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.restore();
   }
 
   /**
-   * Decoration / wonder influence radius.
+   * @param {number} x
+   * @param {number} y
+   * @param {number} w
+   * @param {number} h
+   * @param {number} radius
+   */
+  _roundRect(x, y, w, h, radius) {
+    const ctx = this.ctx;
+    const r = Math.max(0, Math.min(radius, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /**
+   * Decoration / commerce influence radius (wonders are global — no ring).
    * @param {number} tx
    * @param {number} ty
    * @param {object} def
    */
   _drawInfluenceRadius(tx, ty, def) {
+    if (!def || def.category === "wonder") return;
     const base = def.influenceRadiusTiles != null ? def.influenceRadiusTiles : null;
     if (base == null || base < 0) return;
     const radiusTiles = base + Math.max(def.gridW, def.gridH) / 2;
@@ -553,18 +687,13 @@ export class Renderer {
     const cx = (tx + def.gridW / 2) * tile;
     const cy = (ty + def.gridH / 2) * tile;
     const r = radiusTiles * tile;
-    const isWonder = def.category === "wonder";
     const isShop = def.category === "commercial";
-    const fill = isWonder
-      ? "rgba(212,168,72,0.16)"
-      : isShop
-        ? "rgba(90,150,200,0.16)"
-        : "rgba(138,154,91,0.18)";
-    const stroke = isWonder
-      ? "rgba(196,140,40,0.95)"
-      : isShop
-        ? "rgba(70,130,190,0.95)"
-        : "rgba(138,154,91,0.95)";
+    const fill = isShop
+      ? "rgba(90,150,200,0.16)"
+      : "rgba(138,154,91,0.18)";
+    const stroke = isShop
+      ? "rgba(70,130,190,0.95)"
+      : "rgba(138,154,91,0.95)";
 
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -667,31 +796,61 @@ export class Renderer {
       }
     }
 
+    // Contract cue: house ready to sign (no active rental contract)
+    if (
+      b.def.category === "house" &&
+      !usesLootEconomy(b.def) &&
+      st !== "ready" &&
+      (st === "idle" || rt.contractId == null)
+    ) {
+      this._drawBobbingBadge(cx, spriteTop, "assets/ui/icon_contract.svg", {
+        baseW: 34 * 1.4,
+        glowRgb: "80, 190, 255",
+        softRgb: "200, 240, 255",
+      });
+      return;
+    }
+
     // Collect cue when rent is ready
     if (st !== "ready") return;
 
-    const iconScale = 1.4;
-    const badgeY = spriteTop - 6 * iconScale;
-    const spriteUrl = "assets/ui/icon_cash.png";
+    this._drawBobbingBadge(cx, spriteTop, "assets/ui/icon_cash.png", {
+      baseW: 46.5,
+      glowRgb: "255, 220, 70",
+      softRgb: "255, 245, 180",
+    });
+  }
+
+  /**
+   * Floating status badge above a building (bob + pulse glow).
+   * @param {number} cx
+   * @param {number} spriteTop
+   * @param {string} spriteUrl
+   * @param {{ baseW?: number, glowRgb?: string, softRgb?: string }} [opts]
+   */
+  _drawBobbingBadge(cx, spriteTop, spriteUrl, opts = {}) {
+    const ctx = this.ctx;
     const img = this.images.get(spriteUrl);
-    if (img) {
-      const w = 30 * iconScale * 1.55;
-      const h = (img.height / img.width) * w;
-      const t = performance.now() / 280;
-      const bob = Math.sin(t) * 3.5;
-      const x = cx - w / 2;
-      const y = badgeY - h + bob;
-      const pulse = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t));
-      ctx.save();
-      ctx.shadowColor = `rgba(255, 220, 70, ${0.85 * pulse})`;
-      ctx.shadowBlur = 14 + 6 * pulse;
-      ctx.drawImage(img, x, y, w, h);
-      ctx.shadowBlur = 4;
-      ctx.shadowColor = `rgba(255, 245, 180, ${0.95 * pulse})`;
-      ctx.drawImage(img, x, y, w, h);
-      ctx.restore();
-      ctx.drawImage(img, x, y, w, h);
-    }
+    if (!img) return;
+    const iconScale = 1.4;
+    const w = (opts.baseW ?? 42) * (iconScale / 1.4);
+    const h = (img.height / Math.max(1, img.width)) * w;
+    const t = performance.now() / 280;
+    const bob = Math.sin(t) * 3.5;
+    const x = cx - w / 2;
+    const y = spriteTop - 6 * iconScale - h + bob;
+    const pulse = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t));
+    const glowRgb = opts.glowRgb || "255, 220, 70";
+    const softRgb = opts.softRgb || "255, 245, 180";
+    ctx.save();
+    ctx.shadowColor = `rgba(${glowRgb}, ${0.85 * pulse})`;
+    ctx.shadowBlur = 14 + 6 * pulse;
+    ctx.drawImage(img, x, y, w, h);
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = `rgba(${softRgb}, ${0.95 * pulse})`;
+    ctx.drawImage(img, x, y, w, h);
+    ctx.restore();
+    ctx.drawImage(img, x, y, w, h);
   }
 
   /**
@@ -757,5 +916,26 @@ export class Renderer {
       ctx.fillText(def.name || "?", tx * this.grid.tile + 4, ty * this.grid.tile + 14);
     }
     ctx.globalAlpha = 1;
+  }
+
+  /** @param {{ kind: object, tx: number, ty: number }} item */
+  _drawNature(item) {
+    const def = item.kind;
+    const ctx = this.ctx;
+    const { drawX, drawY } = spriteOrigin(def, item.tx, item.ty, this.grid.tile);
+    const img = this.images.get(def.spriteUrl);
+    if (img) {
+      ctx.imageSmoothingEnabled = true;
+      if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, drawX, drawY, def.width, def.height);
+    } else {
+      ctx.fillStyle = "#3d6b2e";
+      ctx.fillRect(
+        item.tx * this.grid.tile + 6,
+        item.ty * this.grid.tile + 4,
+        this.grid.tile - 12,
+        this.grid.tile - 8
+      );
+    }
   }
 }

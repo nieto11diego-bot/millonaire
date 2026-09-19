@@ -119,21 +119,12 @@ export const INSTANT_BUILD_COST_FACTOR = 0.12;
 export const INSTANT_BUILD_STEP_MS = 5 * 60 * 1000;
 
 /** Wonder premium production (wall-clock intervals, divided by TIME_SCALE). */
+/** Wonder gold/diamond production disabled (no periodic rewards). */
 export const WONDER_PRODUCTION = {
   goldIntervalSec: 8 * 3600,
-  goldReward: 1,
+  goldReward: 0,
   diamondIntervalSec: 24 * 3600,
-  diamondReward: 1,
-};
-
-/**
- * House population (SimCity-style growth) and rent cycle.
- * maxPeople and reward duration scale with building level.
- */
-export const HOUSE_POP = {
-  basePeople: 4,
-  peoplePerLevel: 1.6,
-  areaBonusPer4Tiles: 1,
+  diamondReward: 0,
 };
 
 export const HOUSE_REWARD_TIME = {
@@ -143,6 +134,9 @@ export const HOUSE_REWARD_TIME = {
   maxLevel: 32,
 };
 
+/** @deprecated population cap removed from house economy */
+export const HOUSE_POP = { basePeople: 0, peoplePerLevel: 0, areaBonusPer4Tiles: 0 };
+
 /** Full occupancy from empty takes this many reward cycles. */
 export const HOUSE_GROWTH = { fillCycles: 3 };
 
@@ -151,7 +145,6 @@ export const HOUSE_GROWTH = { fillCycles: 3 };
  *   10 seconds → $200 at level 1
  *   each further level adds the repeating succession +5, +10, +5, +5, +15
  *   → rates 200, 205, 215, 220, 225, 240, 245, …
- * Full-cycle reward ≈ (rewardSec / 10) * rate(level), split across maxPeople.
  */
 export const HOUSE_REWARD_RATE = {
   chunkSec: 10,
@@ -162,18 +155,73 @@ export const HOUSE_REWARD_RATE = {
 /** @deprecated kept for older references; house payout uses HOUSE_REWARD_RATE */
 export const HOUSE_YIELD = { perCyclePercent: 6 };
 
+/** Max residents from catalog `maxPeople` (0 if unset). */
 export function houseMaxPeople(def) {
-  if (def?.maxPeople != null) return Math.max(1, Math.round(def.maxPeople));
-  const lvl = Math.max(1, def?.level || 1);
-  const area = Math.max(1, (def?.gridW || 2) * (def?.gridH || 2));
-  return Math.max(
-    1,
-    Math.round(
-      HOUSE_POP.basePeople +
-        HOUSE_POP.peoplePerLevel * (lvl - 1) +
-        ((area - 4) / 4) * HOUSE_POP.areaBonusPer4Tiles
-    )
-  );
+  if (def?.maxPeople == null) return 0;
+  return Math.max(0, Math.round(Number(def.maxPeople) || 0));
+}
+
+/**
+ * City population: sum of `people` on finished houses with an active contract.
+ * Houses under construction or without a signed contract do not count.
+ */
+export function cityPopulation(buildings) {
+  if (!buildings?.length) return 0;
+  let total = 0;
+  for (const b of buildings) {
+    if (b.def?.category !== "house") continue;
+    if (b.runtime?.status === STATUS.BUILDING) continue;
+    if (b.runtime?.contractId == null) continue;
+    total += Math.max(0, Math.round(Number(b.runtime.people) || 0));
+  }
+  return total;
+}
+
+/**
+ * Commerce benefit % this house contributes when inside a shop radius.
+ * Disabled: houses no longer grant commerce benefit %.
+ */
+export function houseBenefitPercent(_def) {
+  return 0;
+}
+
+/** Scaled units: 100 = 1%. */
+export function houseBenefitScaled(def) {
+  return Math.round(houseBenefitPercent(def) * 100);
+}
+
+export function contractDurationMs(contract) {
+  const sec = Number(contract?.durationSec) || 0;
+  return Math.max(1000, sec * 1000);
+}
+
+/** Flat sign cost from catalog (same for every house). */
+export function contractCost(contract, _houseDef) {
+  return Math.max(0, Math.round(Number(contract?.costBase) || 0));
+}
+
+/** House-specific % boost on contract collect payout (e.g. 5.5 → +5.5%). */
+export function houseContractBonusPercent(def) {
+  if (def?.contractBonusPercent == null) return 0;
+  return Math.max(0, Number(def.contractBonusPercent) || 0);
+}
+
+/** Collect payout: incomeBase × (1 + house contractBonusPercent). */
+export function contractIncome(contract, houseDef) {
+  const base = Math.max(0, Number(contract?.incomeBase) || 0);
+  const pct = houseContractBonusPercent(houseDef);
+  return Math.max(0, Math.round(base * (1 + pct / 100)));
+}
+
+export function contractCollectXp(contract, cash) {
+  const tier = Math.max(0, Number(contract?.id) || 0);
+  const fromCash = Math.max(1, Math.round((cash / 50) * XP_REWARD_SCALE));
+  return Math.max(1, fromCash + tier);
+}
+
+export function findContract(contracts, contractId) {
+  if (!contracts || contractId == null) return null;
+  return contracts.find((c) => c.id === contractId) || null;
 }
 
 /** Unique rent/reward duration for this house, scaled by level. */
@@ -208,24 +256,20 @@ export const CASH_REWARD_SCALE = 0.15;
 /** Global XP gain scale (1 = full, 0.5 = half). Applies to collect and build XP. */
 export const XP_REWARD_SCALE = 0.5;
 
-/** Full-occupancy cash before influence (override with def.rewardCash). */
+/** Full-occupancy cash before influence. No rewardCash → no house production. */
 export function houseFullCycleReward(def) {
-  let cash;
-  if (def?.rewardCash != null) cash = Math.max(0, Math.round(def.rewardCash));
-  else {
-    const durationSec = houseRewardDurationMs(def) / 1000;
-    const chunks = durationSec / HOUSE_REWARD_RATE.chunkSec;
-    cash = Math.max(1, Math.round(chunks * houseRewardRatePerChunk(def)));
-  }
-  return Math.max(0, Math.round(cash * CASH_REWARD_SCALE));
+  if (def?.rewardCash == null) return 0;
+  return Math.max(0, Math.round(Number(def.rewardCash) * CASH_REWARD_SCALE));
 }
 
 export function houseRentPerPerson(def) {
   if (def?.rentPerPerson != null) {
-    return Math.max(1, Math.round(def.rentPerPerson * CASH_REWARD_SCALE));
+    return Math.max(0, Math.round(def.rentPerPerson * CASH_REWARD_SCALE));
   }
+  const full = houseFullCycleReward(def);
+  if (full <= 0) return 0;
   const max = houseMaxPeople(def);
-  return Math.max(1, Math.round(houseFullCycleReward(def) / Math.max(1, max)));
+  return Math.max(1, Math.round(full / Math.max(1, max)));
 }
 
 export function houseIncome(def, people, influenceScaled) {
@@ -429,33 +473,33 @@ export function accrueCommerceLoot(building, buildings = null, now = Date.now())
   return accrueHouseLoot(building, buildings, now);
 }
 
-/** Fresh operational runtime for a finished house (full population by default). */
+/** Fresh operational runtime for a finished house (needs a signed contract). */
 export function makeHouseRuntime(def, people = null) {
   const maxPeople = houseMaxPeople(def);
-  const durationMs = houseRewardDurationMs(def);
   const growthIntervalMs = houseGrowthIntervalMs(def);
   const pop =
     people == null
       ? maxPeople
-      : Math.max(0, Math.min(maxPeople, Math.round(people)));
+      : Math.max(0, maxPeople > 0 ? Math.min(maxPeople, Math.round(people)) : 0);
   const now = Date.now();
   const base = {
-    status: STATUS.WAITING,
+    status: STATUS.IDLE,
     people: pop,
     maxPeople,
-    growthRemainingMs: pop >= maxPeople ? 0 : growthIntervalMs,
+    growthRemainingMs: 0,
     growthIntervalMs,
-    durationMs,
-    remainingMs: durationMs,
+    durationMs: 0,
+    remainingMs: 0,
     influence: 0,
     lastIncome: 0,
+    contractId: null,
   };
   if (usesLootEconomy(def)) {
     return {
       ...base,
+      status: STATUS.WAITING,
       pendingLoot: 0,
       lastLootUpdate: now,
-      // Legacy rent timer unused — loot uses lastLootUpdate instead.
       remainingMs: 0,
       durationMs: 0,
     };
@@ -559,24 +603,24 @@ export function wonderDiamondIntervalMs(def) {
   return Math.max(1000, (sec * 1000) / TIME_SCALE);
 }
 
-export function wonderGoldReward(def) {
-  return Math.max(0, def?.goldReward ?? WONDER_PRODUCTION.goldReward);
+export function wonderGoldReward(_def) {
+  return 0;
 }
 
-export function wonderDiamondReward(def) {
-  return Math.max(0, def?.diamondReward ?? WONDER_PRODUCTION.diamondReward);
+export function wonderDiamondReward(_def) {
+  return 0;
 }
 
-export function wonderGoldReady(rt, now = Date.now()) {
-  return !!rt && now >= (rt.goldReadyAt || 0);
+export function wonderGoldReady(_rt, _now = Date.now()) {
+  return false;
 }
 
-export function wonderDiamondReady(rt, now = Date.now()) {
-  return !!rt && now >= (rt.diamondReadyAt || 0);
+export function wonderDiamondReady(_rt, _now = Date.now()) {
+  return false;
 }
 
-export function wonderAnyReady(rt, now = Date.now()) {
-  return wonderGoldReady(rt, now) || wonderDiamondReady(rt, now);
+export function wonderAnyReady(_rt, _now = Date.now()) {
+  return false;
 }
 
 export function wonderGoldRemainingMs(rt, now = Date.now()) {
@@ -875,9 +919,9 @@ export function computeHouseInfluence(house, buildings) {
     if (b.id === house.id) continue;
     if (isConstructing(b)) continue;
     const d = b.def;
+    // Wonders: global city bonus (accumulates, no radius)
     if (d.category === "wonder" && d.rewardBonusScaled) {
-      const r = influenceRadiusOf(d);
-      if (r != null && inRadius(b, house, r)) scaled += d.rewardBonusScaled;
+      scaled += d.rewardBonusScaled;
       continue;
     }
     if (d.category === "decoration" && d.houseBonusScaled) {
@@ -903,19 +947,34 @@ export function countHousesInCommerceRadius(shop, buildings) {
   return n;
 }
 
-/** Houses (+ wonders) that boost commerce production. */
+/** Sum of house benefit % from finished houses in the shop radius. */
+export function sumHouseBenefitPercentInCommerceRadius(shop, buildings) {
+  if (!shop || !buildings) return 0;
+  const r = influenceRadiusOf(shop.def);
+  if (r == null) return 0;
+  let pct = 0;
+  for (const b of buildings) {
+    if (b.id === shop.id) continue;
+    if (isConstructing(b)) continue;
+    if (b.def?.category !== "house") continue;
+    if (inRadius(shop, b, r)) pct += houseBenefitPercent(b.def);
+  }
+  return pct;
+}
+
+/** Houses (+ global wonders) that boost commerce production. */
 export function computeCommerceInfluence(shop, buildings) {
   let scaled = 0;
-  const houseCount = countHousesInCommerceRadius(shop, buildings);
-  scaled += houseCount * commerceHouseBonusScaled(shop.def);
+  // Houses no longer grant commerce benefit % (kept for API compatibility = 0).
+  scaled += Math.round(sumHouseBenefitPercentInCommerceRadius(shop, buildings) * 100);
 
   for (const b of buildings) {
     if (b.id === shop.id) continue;
     if (isConstructing(b)) continue;
     const d = b.def;
+    // Wonders: global city bonus (accumulates, no radius)
     if (d.category !== "wonder" || !d.rewardBonusScaled) continue;
-    const r = influenceRadiusOf(d);
-    if (r != null && inRadius(b, shop, r)) scaled += d.rewardBonusScaled;
+    scaled += d.rewardBonusScaled;
   }
   return scaled;
 }
